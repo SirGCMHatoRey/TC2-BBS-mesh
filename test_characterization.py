@@ -176,6 +176,24 @@ def test_quick_send_mail_rejects_bad_format():
     assert "Send Mail Quick Command format" in r
 
 
+def test_send_mail_end_to_end_persists_and_notifies():
+    s = new_session(extra_nodes={"!bob": make_node(2002, "BOB", "Bob Node")})
+    s.advance("b")            # bbs menu
+    s.advance("m")            # mail menu
+    s.advance("s")            # send
+    r = joined(s.advance("bob"))          # resolve recipient
+    assert "message to Bob Node" in r
+
+    s.advance("Greetings")    # subject
+    s.advance("Body line")    # content
+    r = joined(s.advance("END"))
+    assert "posted to the mailbox of Bob Node" in r
+
+    # Recipient gets the out-of-band nudge, and the mail is stored for them.
+    assert "new mail message from SEND" in joined(s.broadcasts())
+    assert len(db_operations.get_mail("!bob")) == 1
+
+
 # --------------------------------------------------------------------------
 # Stats
 # --------------------------------------------------------------------------

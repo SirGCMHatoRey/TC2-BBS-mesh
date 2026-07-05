@@ -15,7 +15,7 @@ from js8call_integration import handle_js8call_command, handle_js8call_steps, ha
 from utils import get_user_state, get_node_short_name, get_node_id_from_num, send_message, update_user_state
 from session import Session
 from flows.base import Deps, GOTO_MAIN, GOTO_BBS, GOTO_UTILITIES
-from adapters import Store
+from adapters import Store, Lookup
 
 # Deep dispatcher for migrated conversation topics. Topics not yet registered
 # fall through to the legacy handle_*_steps path below.
@@ -35,6 +35,7 @@ def _dispatch_session(sender_id, command, message, state, interface):
     deps = Deps(
         roster=interface.nodes,
         store=Store(interface),
+        lookup=Lookup(interface),
         node_num=sender_id,
         node_id=get_node_id_from_num(sender_id, interface),
         allowed_nodes=getattr(interface, "allowed_nodes", []),
@@ -42,6 +43,8 @@ def _dispatch_session(sender_id, command, message, state, interface):
     result = _SESSION.advance(command, message, state, deps)
     for reply in result.replies:
         send_message(reply, sender_id, interface)
+    for destination, text in result.notifications:
+        send_message(text, destination, interface)
     if result.goto is not None:
         handle_help_command(sender_id, interface, _GOTO_MENU[result.goto])
     else:
@@ -177,17 +180,10 @@ def process_message(sender_id, message, interface, is_sync_message=False):
                 command = state['command']
                 step = state['step']
 
-                # Bulletins and Stats are owned by the Session seam (handled
-                # above). What remains here is not yet migrated.
-                if command == 'MAIL':
-                    handle_mail_steps(sender_id, message, step, state, interface, bbs_nodes)
-                elif command == 'CHANNEL_DIRECTORY':
+                # Mail, Bulletins and Stats are owned by the Session seam
+                # (handled above). What remains here is not yet migrated.
+                if command == 'CHANNEL_DIRECTORY':
                     handle_channel_directory_steps(sender_id, message, step, state, interface)
-                elif command == 'CHECK_MAIL':
-                    if step == 1:
-                        handle_read_mail_command(sender_id, message, state, interface)
-                    elif step == 2:
-                        handle_delete_mail_confirmation(sender_id, message, state, interface, bbs_nodes)
                 elif command == 'CHECK_BULLETIN':
                     if step == 1:
                         handle_read_bulletin_command(sender_id, message, state, interface)

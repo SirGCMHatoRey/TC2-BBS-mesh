@@ -26,6 +26,7 @@ class Deps:
 
     roster: dict = field(default_factory=dict)   # node_id -> node dict (interface.nodes)
     store: Any = None                            # persistence adapter (candidate 02 seam)
+    lookup: Any = None                           # node-resolution adapter (candidate 01 seam)
     node_num: Any = None                         # acting node's mesh number (the sender)
     node_id: Any = None                          # acting node's id, resolved from the roster
     allowed_nodes: List[str] = field(default_factory=list)   # urgent-board allow-list
@@ -53,3 +54,8 @@ class FlowResult:
     replies: List[str] = field(default_factory=list)
     next_state: Optional[dict] = None
     goto: Optional[str] = None
+    #: Out-of-band messages to nodes other than the sender, as (destination,
+    #: text) pairs — e.g. the "you have new mail" nudge to a recipient. The
+    #: router sends these after the replies. This is the cross-node messaging
+    #: that the Transport seam (candidate 01) will eventually own.
+    notifications: List[tuple] = field(default_factory=list)
