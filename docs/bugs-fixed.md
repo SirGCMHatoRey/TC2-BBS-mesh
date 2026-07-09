@@ -202,6 +202,73 @@ Commit `6257db4`.
 
 ---
 
+## 11. The JS8Call listener blocked the server, then died or spun
+
+`JS8CallClient.connect()` looped on `sock.recv()` and never returned, and
+`server.main()` called it inline:
+
+```python
+if js8call_client.db_conn:
+    js8call_client.connect()      # never returns
+try:
+    while True:                   # never reached
+        time.sleep(1)
+except KeyboardInterrupt:         # never installed
+    interface.close()
+```
+
+With JS8Call enabled the server had no shutdown handler at all. `Ctrl-C` landed
+inside `recv()` and unwound past `interface.close()`.
+
+The loop itself handled neither end of the connection:
+
+- **Peer hangs up cleanly** (Linux): `recv()` returns `b''`, and
+  `if not content: continue` spins a tight loop, burning a core forever.
+- **Peer resets** (Windows): `ConnectionResetError` escapes `connect()`, which
+  catches only `ConnectionRefusedError`, and kills the thread — or, run inline,
+  the server.
+
+**Fix:** the client owns its lifecycle. `start()` spawns a daemon listener and
+returns; `close()` shuts the socket down — which unblocks a listener parked in
+`recv()` — and joins it. EOF and `OSError` both end the loop cleanly.
+`server.main()` no longer knows a thread exists.
+
+**Behaviour change:** the server starts, serves, and shuts down cleanly with
+JS8Call enabled.
+
+Commit `a35c3e8`. Tests: `test_js8_client.py::test_close_unblocks_and_joins_the_listener`,
+`::test_peer_hangup_stops_the_listener_without_spinning`,
+`::test_start_returns_immediately_and_listens`.
+
+---
+
+## 12. JS8Call messages arriving in the same TCP segment were both discarded
+
+```python
+content = self.sock.recv(65500).decode('utf-8')
+try:
+    message = json.loads(content)
+except ValueError:
+    continue                       # drops everything in this read
+```
+
+JS8Call speaks newline-delimited JSON. A single `recv()` can carry two
+messages, or half of one. `json.loads` on the raw chunk fails for both cases,
+and the `continue` threw the data away without a word. TCP guarantees a byte
+stream, not message boundaries — this code assumed one read meant one message.
+
+**Fix:** `decode_messages(buffer)` accumulates bytes, splits on newlines,
+parses each line, and returns the incomplete remainder for the next read. An
+unparseable line is logged and skipped rather than taking its neighbours with
+it.
+
+**Behaviour change:** no silent message loss.
+
+Commit `a35c3e8`. Tests: `test_js8_client.py::test_two_messages_in_one_chunk`,
+`::test_message_split_across_chunks`, `::test_two_messages_in_one_segment_are_both_stored`.
+
+---
+
 ## Deliberate behaviour changes that were not bugs
 
 - **Adding a Channel now replicates from either entry point.** Previously only
@@ -224,10 +291,9 @@ Commit `6257db4`.
 
 ## Known, not fixed
 
-- **`JS8CallClient.connect()` blocks forever, and `server.main()` calls it
-  inline.** With JS8Call enabled the `while True` loop and its
-  `KeyboardInterrupt` shutdown handler are never reached, so the server cannot
-  shut down cleanly. Fixing it requires deciding how the bridge is threaded.
-
 - **`db_admin.py` re-declares the entire database schema**, a copy of the one in
   `db_operations.py`. They can drift.
+
+- **The JS8Call bridge does not reconnect.** If the JS8Call instance restarts,
+  the listener exits cleanly and stays down until the server is restarted.
+  Adding retry with backoff is a feature, not a fix, so it was left out.

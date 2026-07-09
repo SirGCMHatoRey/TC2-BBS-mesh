@@ -72,12 +72,11 @@ def main():
 
     pub.subscribe(receive_packet, system_config['mqtt_topic'])
 
-    # Initialize and start JS8Call Client if configured
+    # Initialize and start JS8Call Client if configured. It listens on its own
+    # thread, so this returns immediately and does nothing when unconfigured.
     js8call_client = JS8CallClient(interface)
     js8call_client.logger = js8call_logger
-
-    if js8call_client.database.configured:
-        js8call_client.connect()
+    js8call_client.start()
 
     try:
         while True:
@@ -86,8 +85,7 @@ def main():
     except KeyboardInterrupt:
         logging.info("Shutting down the server...")
         interface.close()
-        if js8call_client.connected:
-            js8call_client.close()
+        js8call_client.close()
 
 if __name__ == "__main__":
     main()
