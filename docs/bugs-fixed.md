@@ -312,7 +312,7 @@ error, and carries on to the next chunk.
 **Behaviour change:** a dropped chunk is logged rather than crashing the
 conversation.
 
-Commit `TBD`. Test: `tests/test_transport.py::test_a_failed_send_is_logged_not_raised`.
+Commit `c82bc49`. Test: `tests/test_transport.py::test_a_failed_send_is_logged_not_raised`.
 
 ---
 
@@ -333,7 +333,7 @@ every section is read from the same file.
 
 **Behaviour change:** `--config` means what it says.
 
-Commit `TBD`.
+Commit `c82bc49`.
 
 ---
 
@@ -361,7 +361,7 @@ Commit `TBD`.
   owns sending, chunking and pacing; `roster` answers questions about the node
   map; `settings` owns the two config lists. Only `on_receive` meets the
   interface, and only `Transport` calls `sendText`.
-  Commit `TBD`.
+  Commit `c82bc49`.
 
 ---
 
