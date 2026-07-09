@@ -287,7 +287,7 @@ never noticed.
 **Fix:** `for row in mail`. The listing functions are now tested for returning
 every row.
 
-Commit `TBD`. Test: `tests/test_db_admin.py::test_list_mail_returns_every_row`.
+Commit `6eea6cc`. Test: `tests/test_db_admin.py::test_list_mail_returns_every_row`.
 
 ---
 
