@@ -8,7 +8,7 @@ from meshtastic import BROADCAST_NUM
 from adapters import Store
 from db_operations import (
     get_bulletin_content, get_bulletins,
-    get_mail, insert_channel, get_channels
+    get_mail, get_channels
 )
 from utils import (
     get_node_id_from_num, get_node_info,
@@ -128,52 +128,6 @@ def handle_channel_directory_command(sender_id, interface):
     response = "📚CHANNEL DIRECTORY📚\nWhat would you like to do?\n[V]iew  [P]ost  E[X]IT"
     send_message(response, sender_id, interface)
     update_user_state(sender_id, {'command': 'CHANNEL_DIRECTORY', 'step': 1})
-
-
-def handle_channel_directory_steps(sender_id, message, step, state, interface):
-    message = message.strip()
-    if len(message) == 2 and message[1] == 'x':
-        message = message[0]
-
-    if step == 1:
-        choice = message
-        if choice.lower() == 'x':
-            handle_help_command(sender_id, interface)
-            return
-        elif choice.lower() == 'v':
-            channels = get_channels()
-            if channels:
-                response = "Select a channel number to view:\n" + "\n".join(
-                    [f"[{i}] {channel[0]}" for i, channel in enumerate(channels)])
-                send_message(response, sender_id, interface)
-                update_user_state(sender_id, {'command': 'CHANNEL_DIRECTORY', 'step': 2})
-            else:
-                send_message("No channels available in the directory.", sender_id, interface)
-                handle_channel_directory_command(sender_id, interface)
-        elif choice.lower() == 'p':
-            send_message("Name your channel for the directory:", sender_id, interface)
-            update_user_state(sender_id, {'command': 'CHANNEL_DIRECTORY', 'step': 3})
-
-    elif step == 2:
-        channel_index = int(message)
-        channels = get_channels()
-        if 0 <= channel_index < len(channels):
-            channel_name, channel_url = channels[channel_index]
-            send_message(f"Channel Name: {channel_name}\nChannel URL:\n{channel_url}", sender_id, interface)
-        handle_channel_directory_command(sender_id, interface)
-
-    elif step == 3:
-        channel_name = message
-        send_message("Send a message with your channel URL or PSK:", sender_id, interface)
-        update_user_state(sender_id, {'command': 'CHANNEL_DIRECTORY', 'step': 4, 'channel_name': channel_name})
-
-    elif step == 4:
-        channel_url = message
-        channel_name = state['channel_name']
-        # The menu path has never synced channels to peers, unlike CHP,,.
-        insert_channel(channel_name, channel_url)
-        send_message(f"Your channel '{channel_name}' has been added to the directory.", sender_id, interface)
-        handle_channel_directory_command(sender_id, interface)
 
 
 def handle_send_mail_command(sender_id, message, interface, bbs_nodes):
@@ -315,48 +269,6 @@ def handle_post_channel_command(sender_id, message, interface):
     except Exception as e:
         logging.error(f"Error processing post channel command: {e}")
         send_message("Error processing post channel command.", sender_id, interface)
-
-
-def handle_check_channel_command(sender_id, interface):
-    try:
-        channels = get_channels()
-        if not channels:
-            send_message("No channels available in the directory.", sender_id, interface)
-            return
-
-        response = "Available Channels:\n"
-        for i, channel in enumerate(channels):
-            response += f"{i + 1:02d}. Name: {channel[0]}\n"
-        response += "\nPlease reply with the number of the channel you want to view."
-        send_message(response, sender_id, interface)
-
-        update_user_state(sender_id, {'command': 'CHECK_CHANNEL', 'step': 1, 'channels': channels})
-
-    except Exception as e:
-        logging.error(f"Error processing check channel command: {e}")
-        send_message("Error processing check channel command.", sender_id, interface)
-
-
-def handle_read_channel_command(sender_id, message, state, interface):
-    try:
-        channels = state.get('channels', [])
-        message_number = int(message) - 1
-
-        if message_number < 0 or message_number >= len(channels):
-            send_message("Invalid channel number. Please try again.", sender_id, interface)
-            return
-
-        channel_name, channel_url = channels[message_number]
-        response = f"Channel Name: {channel_name}\nChannel URL: {channel_url}"
-        send_message(response, sender_id, interface)
-
-        update_user_state(sender_id, None)
-
-    except ValueError:
-        send_message("Invalid input. Please enter a valid channel number.", sender_id, interface)
-    except Exception as e:
-        logging.error(f"Error processing read channel command: {e}")
-        send_message("Error processing read channel command.", sender_id, interface)
 
 
 def handle_list_channels_command(sender_id, interface):

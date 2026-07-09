@@ -25,9 +25,7 @@ from events import (
 from utils import send_message
 
 #: Prefixes that mark an inbound message as sync rather than conversation.
-#: CHANNEL| is decodable but deliberately absent here, matching the existing
-#: behaviour where an inbound CHANNEL| is treated as conversation.
-_SYNC_PREFIXES = ("BULLETIN|", "MAIL|", "DELETE_BULLETIN|", "DELETE_MAIL|")
+_SYNC_PREFIXES = ("BULLETIN|", "MAIL|", "DELETE_BULLETIN|", "DELETE_MAIL|", "CHANNEL|")
 
 
 def is_sync_message(text):

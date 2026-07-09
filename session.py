@@ -14,6 +14,7 @@ one at a time — anything not yet registered falls through to the legacy path.
 from flows.stats import StatsFlow
 from flows.bulletin import BulletinFlow
 from flows.mail import MailFlow
+from flows.channel import ChannelFlow
 
 
 def _topics(flow):
@@ -24,7 +25,7 @@ def _topics(flow):
 
 class Session:
     def __init__(self, flows=None):
-        flows = flows if flows is not None else [StatsFlow(), BulletinFlow(), MailFlow()]
+        flows = flows if flows is not None else [StatsFlow(), BulletinFlow(), MailFlow(), ChannelFlow()]
         self._flows = {}
         for flow in flows:
             for topic in _topics(flow):

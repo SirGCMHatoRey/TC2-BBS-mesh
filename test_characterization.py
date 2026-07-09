@@ -268,6 +268,47 @@ def test_urgent_post_allowed_broadcasts():
 
 
 # --------------------------------------------------------------------------
+# Channel directory
+# --------------------------------------------------------------------------
+
+def test_channel_directory_view_empty():
+    s = new_session()
+    s.advance("b")            # bbs menu
+    r = joined(s.advance("c"))
+    assert "CHANNEL DIRECTORY" in r
+
+    r = joined(s.advance("v"))
+    assert "No channels available" in r
+
+
+def test_channel_posted_via_menu_now_syncs_to_peers():
+    """Adding a Channel replicates regardless of entry point.
+
+    Previously only the CHP,, quick command synced; the menu path did not.
+    """
+    s = new_session()
+    s.interface.bbs_nodes = ["!peer"]
+    s.advance("b")
+    s.advance("c")
+    s.advance("p")            # post
+    s.advance("MyNet")        # name
+    r = joined(s.advance("https://example/x"))
+    assert "has been added to the directory" in r
+
+    to_peer = [t for d, t in s.interface.outbox if d == "!peer"]
+    assert to_peer == ["CHANNEL|MyNet|https://example/x"]
+    assert db_operations.get_channels() == [("MyNet", "https://example/x")]
+
+
+def test_synced_channel_is_stored_not_answered():
+    """An inbound CHANNEL| from a peer is ingested, not treated as conversation."""
+    s = new_session()
+    s.sync("CHANNEL|PeerNet|https://peer/x")
+    assert db_operations.get_channels() == [("PeerNet", "https://peer/x")]
+    assert s.interface.outbox == []
+
+
+# --------------------------------------------------------------------------
 # Sync (replication from a peer BBS Node)
 # --------------------------------------------------------------------------
 

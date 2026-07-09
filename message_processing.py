@@ -3,9 +3,9 @@ import logging
 from command_handlers import (
     handle_mail_command, handle_bulletin_command, handle_help_command, handle_stats_command, handle_fortune_command,
     handle_wall_of_shame_command,
-    handle_channel_directory_command, handle_channel_directory_steps, handle_send_mail_command,
+    handle_channel_directory_command, handle_send_mail_command,
     handle_check_mail_command, handle_post_bulletin_command,
-    handle_check_bulletin_command, handle_read_bulletin_command, handle_read_channel_command,
+    handle_check_bulletin_command, handle_read_bulletin_command,
     handle_post_channel_command, handle_list_channels_command, handle_quick_help_command
 )
 from js8call_integration import handle_js8call_command, handle_js8call_steps, handle_group_message_selection
@@ -141,19 +141,11 @@ def process_message(sender_id, message, interface, is_sync_message=False):
                 command = state['command']
                 step = state['step']
 
-                # Mail, Bulletins and Stats are owned by the Session seam
+                # Mail, Bulletins, Stats and Channels are owned by the Session seam
                 # (handled above). What remains here is not yet migrated.
-                if command == 'CHANNEL_DIRECTORY':
-                    handle_channel_directory_steps(sender_id, message, step, state, interface)
-                elif command == 'CHECK_BULLETIN':
+                if command == 'CHECK_BULLETIN':
                     if step == 1:
                         handle_read_bulletin_command(sender_id, message, state, interface)
-                elif command == 'CHECK_CHANNEL':
-                    if step == 1:
-                        handle_read_channel_command(sender_id, message, state, interface)
-                elif command == 'LIST_CHANNELS':
-                    if step == 1:
-                        handle_read_channel_command(sender_id, message, state, interface)
                 elif command == 'JS8CALL_MENU':
                     handle_js8call_steps(sender_id, message, step, interface, state)
                 elif command == 'GROUP_MESSAGES':

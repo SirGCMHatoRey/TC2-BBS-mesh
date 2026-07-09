@@ -54,6 +54,9 @@ class Store:
         return db_operations.get_sender_id_by_mail_id(mail_id)
 
     # channels -------------------------------------------------------------
+    def get_channels(self):
+        return db_operations.get_channels()
+
     def add_channel(self, name, url):
         event = db_operations.insert_channel(name, url)
         self._replication.publish(event, Origin.LOCAL)

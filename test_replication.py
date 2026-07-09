@@ -81,12 +81,13 @@ def test_is_sync_message_recognizes_prefixes():
     assert is_sync_message("MAIL|x")
     assert is_sync_message("DELETE_BULLETIN|x")
     assert is_sync_message("DELETE_MAIL|x")
+    # A peer's CHANNEL| is ingested as sync, not answered as conversation.
+    assert is_sync_message("CHANNEL|Net|url")
 
 
-def test_is_sync_message_excludes_channel_and_conversation():
-    # CHANNEL| is decodable but not treated as sync on arrival (existing behaviour).
-    assert not is_sync_message("CHANNEL|Net|url")
+def test_is_sync_message_excludes_conversation():
     assert not is_sync_message("hello")
+    assert not is_sync_message("b")
 
 
 # --- sync decision ---------------------------------------------------------
