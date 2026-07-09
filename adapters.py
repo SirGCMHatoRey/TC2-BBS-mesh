@@ -1,24 +1,22 @@
-"""Adapters binding the live meshtastic interface to the collaborators flows need.
+"""The collaborators a flow depends on, bound to real machinery.
 
 ``Store`` composes pure persistence with Replication: it writes the record and
 hands it to Replication to decide sync and broadcast. Flows see only the small
 interface — they never learn that peers or the mesh exist.
 
-``Lookup`` is the node-resolution seam candidate 01 will formalize.
+``Lookup`` answers questions about the node roster. Neither holds the radio.
 """
 
 import db_operations
-import utils
+import roster
 from events import (
     BulletinDeleted, BulletinPosted, ChannelAdded, MailDeleted, MailSent, Origin,
 )
-from replication import Replication
 
 
 class Store:
-    def __init__(self, interface, replication=None):
-        self._interface = interface
-        self._replication = replication or Replication(interface)
+    def __init__(self, replication):
+        self._replication = replication
 
     # bulletins ------------------------------------------------------------
     def get_bulletins(self, board):
@@ -81,22 +79,23 @@ class Store:
 
 
 class Lookup:
-    """Node resolution for a flow — the seam candidate 01 will formalize."""
+    """Node resolution for a flow, over the roster it is handed.
 
-    def __init__(self, interface):
-        self._interface = interface
+    Holds a dict, not a radio, so a flow's tests need no fake interface.
+    """
+
+    def __init__(self, nodes):
+        self._nodes = nodes
 
     def node_info(self, short_name):
-        """Nodes matching a short name; each entry's 'num' is its node id."""
-        return utils.get_node_info(self._interface, short_name)
+        """Every Node answering to a short name. Short names are not unique."""
+        return roster.find_by_short_name(self._nodes, short_name)
 
     def node_name(self, node_id):
-        """Long display name for a node id, or a 'Node <id>' fallback."""
-        info = self._interface.nodes.get(node_id)
-        if info:
-            return info["user"]["longName"]
-        return f"Node {node_id}"
+        return roster.long_name(self._nodes, node_id)
 
     def short_name(self, node_id):
-        """Short name for a node id, or None if unknown."""
-        return utils.get_node_short_name(node_id, self._interface)
+        return roster.short_name(self._nodes, node_id)
+
+    def id_from_num(self, num):
+        return roster.id_from_num(self._nodes, num)

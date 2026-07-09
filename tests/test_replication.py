@@ -10,34 +10,14 @@ import sys
 # under test. Keeps `python tests/test_x.py` working alongside pytest.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import types
-
-import utils
 import replication
 from events import (
     BulletinDeleted, BulletinPosted, ChannelAdded, MailDeleted, MailSent, Origin,
 )
 from replication import Replication, decode, encode, is_sync_message
-
-# utils does `import time; time.sleep(2)` to pace the radio. Replace the module
-# reference inside utils only -- assigning to utils.time.sleep would mutate the
-# real time module for the whole process, and other tests need a working sleep.
-utils.time = types.SimpleNamespace(sleep=lambda *a, **k: None)
+from fakes import FakeTransport
 
 BROADCAST = 4294967295
-
-
-class FakeInterface:
-    def __init__(self, bbs_nodes=None):
-        self.bbs_nodes = bbs_nodes or []
-        self.nodes = {}
-        self.outbox = []
-        self._n = 0
-
-    def sendText(self, text, destinationId, wantAck=True, wantResponse=False):
-        self.outbox.append((destinationId, text))
-        self._n += 1
-        return types.SimpleNamespace(id=self._n)
 
 
 URGENT = BulletinPosted("Urgent", "AA", "Flood", "Move now", "u1")
@@ -45,12 +25,12 @@ GENERAL = BulletinPosted("General", "AA", "Hello", "Body", "u2")
 MAIL = MailSent("!me", "ME", "!bob", "Subj", "Body", "u3")
 
 
-def sent_to(interface, dest):
-    return [t for d, t in interface.outbox if d == dest]
+def sent_to(transport, dest):
+    return transport.sent_to(dest)
 
 
-def broadcasts(interface):
-    return sent_to(interface, BROADCAST)
+def broadcasts(transport):
+    return sent_to(transport, BROADCAST)
 
 
 # --- wire format -----------------------------------------------------------
@@ -103,28 +83,28 @@ def test_is_sync_message_excludes_conversation():
 # --- sync decision ---------------------------------------------------------
 
 def test_local_record_is_synced_to_peers():
-    i = FakeInterface(bbs_nodes=["!p1", "!p2"])
-    Replication(i).publish(GENERAL, Origin.LOCAL)
+    i = FakeTransport()
+    Replication(i, peers=["!p1", "!p2"]).publish(GENERAL, Origin.LOCAL)
     assert sent_to(i, "!p1") == [encode(GENERAL)]
     assert sent_to(i, "!p2") == [encode(GENERAL)]
 
 
 def test_synced_record_is_not_echoed_back():
-    i = FakeInterface(bbs_nodes=["!p1"])
-    Replication(i).publish(GENERAL, Origin.SYNCED)
+    i = FakeTransport()
+    Replication(i, peers=["!p1"]).publish(GENERAL, Origin.SYNCED)
     assert sent_to(i, "!p1") == []
 
 
 def test_no_peers_means_no_sync():
-    i = FakeInterface(bbs_nodes=[])
-    Replication(i).publish(GENERAL, Origin.LOCAL)
+    i = FakeTransport()
+    Replication(i, peers=[]).publish(GENERAL, Origin.LOCAL)
     assert i.outbox == []
 
 
 # --- broadcast decision ----------------------------------------------------
 
 def test_urgent_bulletin_broadcasts_when_local():
-    i = FakeInterface()
+    i = FakeTransport()
     Replication(i).publish(URGENT, Origin.LOCAL)
     assert len(broadcasts(i)) == 1
     assert "NEW URGENT BULLETIN" in broadcasts(i)[0]
@@ -132,26 +112,26 @@ def test_urgent_bulletin_broadcasts_when_local():
 
 
 def test_urgent_bulletin_broadcasts_exactly_once_when_synced():
-    i = FakeInterface()
+    i = FakeTransport()
     Replication(i).publish(URGENT, Origin.SYNCED)
     assert len(broadcasts(i)) == 1
 
 
 def test_non_urgent_bulletin_never_broadcasts():
-    i = FakeInterface()
+    i = FakeTransport()
     Replication(i).publish(GENERAL, Origin.LOCAL)
     assert broadcasts(i) == []
 
 
 def test_mail_never_broadcasts():
-    i = FakeInterface()
+    i = FakeTransport()
     Replication(i).publish(MAIL, Origin.LOCAL)
     assert broadcasts(i) == []
 
 
 def test_broadcast_is_driven_by_board_policy_not_the_name():
     # An unknown board neither broadcasts nor raises.
-    i = FakeInterface()
+    i = FakeTransport()
     Replication(i).publish(BulletinPosted("Sports", "AA", "x", "y", "u"), Origin.LOCAL)
     assert broadcasts(i) == []
 

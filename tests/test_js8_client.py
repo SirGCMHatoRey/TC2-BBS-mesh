@@ -20,8 +20,8 @@ import settings
 
 settings.configure(js8_db_path=":memory:")
 
-import js8call_integration as js8
 from js8call_integration import JS8CallClient, decode_messages
+from fakes import FakeTransport
 
 
 # --------------------------------------------------------------------------
@@ -72,16 +72,6 @@ def test_incomplete_trailing_message_is_held():
 # Lifecycle (real socket)
 # --------------------------------------------------------------------------
 
-class FakeInterface:
-    def __init__(self):
-        self.nodes = {}
-        self.outbox = []
-
-    def sendText(self, text, destinationId, wantAck=True, wantResponse=False):
-        self.outbox.append((destinationId, text))
-        return type("Sent", (), {"id": 1})()
-
-
 class Js8Server:
     """A stand-in JS8Call instance on loopback."""
 
@@ -117,7 +107,7 @@ class Js8Server:
 def new_client(server, urgent=(), groups=()):
     settings.reset()
     settings.configure(js8_db_path=":memory:")
-    client = JS8CallClient(FakeInterface())
+    client = JS8CallClient(FakeTransport())
     client.server = server.address
     client.js8urgent = list(urgent)
     client.js8groups = list(groups)
@@ -202,14 +192,14 @@ def test_close_unblocks_and_joins_the_listener():
 def test_close_is_safe_when_never_started():
     settings.reset()
     settings.configure(js8_db_path=None)
-    client = JS8CallClient(FakeInterface())
+    client = JS8CallClient(FakeTransport())
     client.close()                       # must not raise
 
 
 def test_start_does_nothing_when_unconfigured():
     settings.reset()
     settings.configure(js8_db_path=None)
-    client = JS8CallClient(FakeInterface())
+    client = JS8CallClient(FakeTransport())
     client.start()
     assert client._thread is None
     assert not client.connected

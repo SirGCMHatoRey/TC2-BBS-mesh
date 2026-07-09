@@ -52,7 +52,7 @@ class MailFlow:
                          f"Please be more specific."],
                 keep_state=True)
 
-        recipient_id = nodes[0]["num"]
+        recipient_id = nodes[0].id
         recipient_name = deps.lookup.node_name(recipient_id)
         sender_short_name = deps.lookup.short_name(deps.node_id)
         deps.store.add_mail(deps.node_id, sender_short_name, recipient_id, subject, content)
@@ -138,14 +138,14 @@ class MailFlow:
             return FlowResult(replies=["I'm unable to find that node in my database.", MAIL_MENU],
                               next_state={"command": "MAIL", "step": 1})
         if len(nodes) == 1:
-            recipient_id = nodes[0]["num"]
+            recipient_id = nodes[0].id
             recipient_name = deps.lookup.node_name(recipient_id)
             return FlowResult(
                 replies=[f"What is the subject of your message to {recipient_name}?\nKeep it short."],
                 next_state={"command": "MAIL", "step": 5, "recipient_id": recipient_id})
         replies = ["There are multiple nodes with that short name. "
                    "Which one would you like to leave a message for?"]
-        replies += [f"[{i}] {n['longName']}" for i, n in enumerate(nodes)]
+        replies += [f"[{i}] {n.long_name}" for i, n in enumerate(nodes)]
         return FlowResult(replies=replies,
                           next_state={"command": "MAIL", "step": 6, "nodes": nodes})
 
@@ -171,7 +171,7 @@ class MailFlow:
 
     def _pick_node(self, message, state, deps):
         selected = state["nodes"][int(message)]
-        recipient_id = selected["num"]
+        recipient_id = selected.id
         recipient_name = deps.lookup.node_name(recipient_id)
         return FlowResult(
             replies=[f"What is the subject of your message to {recipient_name}?\nKeep it short."],

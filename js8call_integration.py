@@ -17,9 +17,6 @@ import logging
 from meshtastic import BROADCAST_NUM
 
 import settings
-from utils import send_message
-
-config_file = 'config.ini'
 
 #: How long close() waits for the listener to notice and stop.
 _JOIN_TIMEOUT = 2.0
@@ -60,13 +57,13 @@ def decode_messages(buffer, logger=None):
 
 
 class JS8CallClient:
-    def __init__(self, interface, logger=None):
+    def __init__(self, transport, logger=None):
         self.logger = logger or logging.getLogger('js8call')
         self.logger.setLevel(logging.INFO)
         self.logger.propagate = False
 
         self.config = configparser.ConfigParser()
-        self.config.read(config_file)
+        self.config.read(settings.config_file())
 
         self.server = (
             self.config.get('js8call', 'host', fallback=None),
@@ -80,7 +77,7 @@ class JS8CallClient:
 
         self.connected = False
         self.sock = None
-        self.interface = interface
+        self.transport = transport
         self.database = settings.js8_database()
         self._thread = None
 
@@ -211,7 +208,7 @@ class JS8CallClient:
                 self.database.insert('urgent', sender, receiver, msg)
                 notification_message = (f"💥 URGENT JS8Call Message Received 💥\n"
                                         f"From: {sender}\nCheck BBS for message")
-                send_message(notification_message, BROADCAST_NUM, self.interface)
+                self.transport.send(notification_message, BROADCAST_NUM)
             elif receiver in self.js8groups:
                 self.database.insert('groups', sender, receiver, msg)
             elif self.store_messages:

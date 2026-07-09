@@ -22,8 +22,6 @@ import board as boards
 from events import (
     BulletinDeleted, BulletinPosted, ChannelAdded, MailDeleted, MailSent, Origin,
 )
-from utils import send_message
-
 #: Prefixes that mark an inbound message as sync rather than conversation.
 _SYNC_PREFIXES = ("BULLETIN|", "MAIL|", "DELETE_BULLETIN|", "DELETE_MAIL|", "CHANNEL|")
 
@@ -85,8 +83,9 @@ def _broadcast_text(event):
 
 
 class Replication:
-    def __init__(self, interface):
-        self._interface = interface
+    def __init__(self, transport, peers=()):
+        self._transport = transport
+        self._peers = list(peers)
 
     def publish(self, event, origin):
         """Sync the record to peers (if local) and broadcast it (if its Board says so)."""
@@ -95,10 +94,10 @@ class Replication:
 
         text = _broadcast_text(event)
         if text is not None:
-            send_message(text, BROADCAST_NUM, self._interface)
+            self._transport.send(text, BROADCAST_NUM)
 
     def _sync_to_peers(self, event):
-        peers = getattr(self._interface, "bbs_nodes", None) or []
+        peers = self._peers
         if not peers:
             return
         message = encode(event)
@@ -109,4 +108,4 @@ class Replication:
             logging.info(f"SERVER SYNC: Sending delete mail sync message with "
                          f"unique_id: {event.unique_id}")
         for node_id in peers:
-            send_message(message, node_id, self._interface)
+            self._transport.send(message, node_id)

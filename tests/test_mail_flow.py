@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flows.base import Deps
 from flows.mail import MailFlow, MAIL_MENU
+from roster import Node
 
 
 class FakeStore:
@@ -115,7 +116,7 @@ def test_recipient_unknown_returns_to_mail_menu():
 
 
 def test_recipient_single_prompts_subject():
-    lookup = FakeLookup(nodes={"bob": [{"num": "!bob", "longName": "Bob Node"}]},
+    lookup = FakeLookup(nodes={"bob": [Node("!bob", "BOB", "Bob Node")]},
                         names={"!bob": "Bob Node"})
     r = MailFlow().advance("Bob", st("MAIL", 3), deps(lookup=lookup))
     assert "message to Bob Node" in r.replies[0]
@@ -123,8 +124,8 @@ def test_recipient_single_prompts_subject():
 
 
 def test_recipient_multiple_lists_choices():
-    lookup = FakeLookup(nodes={"bob": [{"num": "!b1", "longName": "Bob One"},
-                                       {"num": "!b2", "longName": "Bob Two"}]})
+    lookup = FakeLookup(nodes={"bob": [Node("!b1", "BOB", "Bob One"),
+                                       Node("!b2", "BOB", "Bob Two")]})
     r = MailFlow().advance("bob", st("MAIL", 3), deps(lookup=lookup))
     assert "multiple nodes" in r.replies[0]
     assert "[0] Bob One" in r.replies
@@ -255,15 +256,15 @@ def test_quick_send_unknown_node():
 
 
 def test_quick_send_ambiguous_short_name():
-    lookup = FakeLookup(nodes={"bob": [{"num": "!b1", "longName": "B1"},
-                                       {"num": "!b2", "longName": "B2"}]})
+    lookup = FakeLookup(nodes={"bob": [Node("!b1", "BOB", "B1"),
+                                       Node("!b2", "BOB", "B2")]})
     r = MailFlow().quick_send("sm,,bob,,Subj,,Body", deps(lookup=lookup))
     assert "Please be more specific" in r.replies[0]
 
 
 def test_quick_send_delivers_and_notifies():
     store = FakeStore()
-    lookup = FakeLookup(nodes={"bob": [{"num": "!bob", "longName": "Bob Node"}]},
+    lookup = FakeLookup(nodes={"bob": [Node("!bob", "BOB", "Bob Node")]},
                         names={"!bob": "Bob Node"}, shorts={"!me": "ME"})
     r = MailFlow().quick_send("sm,,bob,,Subj,,Body text", deps(store, lookup))
     assert store.added == [("!me", "ME", "!bob", "Subj", "Body text")]
@@ -274,7 +275,7 @@ def test_quick_send_delivers_and_notifies():
 
 def test_quick_send_keeps_content_with_commas():
     store = FakeStore()
-    lookup = FakeLookup(nodes={"bob": [{"num": "!bob", "longName": "Bob"}]},
+    lookup = FakeLookup(nodes={"bob": [Node("!bob", "BOB", "Bob")]},
                         names={"!bob": "Bob"}, shorts={"!me": "ME"})
     MailFlow().quick_send("sm,,bob,,Subj,,a,,b,,c", deps(store, lookup))
     assert store.added[0][4] == "a,,b,,c"     # only the first 3 separators split

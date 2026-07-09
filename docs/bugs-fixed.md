@@ -291,6 +291,52 @@ Commit `6eea6cc`. Test: `tests/test_db_admin.py::test_list_mail_returns_every_ro
 
 ---
 
+## 14. A failed send crashed the handler that was meant to swallow it
+
+```python
+except Exception as e:
+    logging.info(f"REPLY SEND ERROR {e.message}")
+```
+
+`e.message` was removed in Python 3. Any transient send failure — radio busy,
+device unplugged, mesh congested — raised `AttributeError` from inside the
+`except` clause. It masked the original error and unwound out of
+`send_message`, past `process_message`, and into the pubsub callback.
+
+Reproduced by making `sendText` raise `OSError("radio busy")`: the caller sees
+`AttributeError: 'OSError' object has no attribute 'message'`.
+
+**Fix:** the send loop now lives in `MeshtasticTransport.send`, logs the actual
+error, and carries on to the next chunk.
+
+**Behaviour change:** a dropped chunk is logged rather than crashing the
+conversation.
+
+Commit `TBD`. Test: `tests/test_transport.py::test_a_failed_send_is_logged_not_raised`.
+
+---
+
+## 15. `--config` did not reach most of the configuration
+
+`server.py --config other.ini` fed the chosen file to `config_init`, which read
+the `[interface]`, `[sync]` and `[allow_list]` sections from it. But
+`command_handlers` opened `'config.ini'` for the `[menu]` section, and
+`js8call_integration` opened `'config.ini'` for `[js8call]`. Both hardcoded the
+name.
+
+So running with an alternate config took its radio settings and peer list from
+one file and its menus and JS8Call settings from another — silently, whichever
+`./config.ini` happened to be lying around.
+
+**Fix:** `settings` owns the config path. `server.main()` sets it once, and
+every section is read from the same file.
+
+**Behaviour change:** `--config` means what it says.
+
+Commit `TBD`.
+
+---
+
 ## Deliberate behaviour changes that were not bugs
 
 - **Adding a Channel now replicates from either entry point.** Previously only
@@ -308,6 +354,14 @@ Commit `6eea6cc`. Test: `tests/test_db_admin.py::test_list_mail_returns_every_ro
   read `config.ini` at module import, so importing anything required the file to
   exist. The test suite now runs with no `config.ini` present.
   Commit `ff0354a`.
+
+- **The meshtastic interface no longer travels through the codebase.** It was
+  passed to nearly every function, and `server.py` stapled `bbs_nodes` and
+  `allowed_nodes` onto it — config riding on a radio object. `Transport` now
+  owns sending, chunking and pacing; `roster` answers questions about the node
+  map; `settings` owns the two config lists. Only `on_receive` meets the
+  interface, and only `Transport` calls `sendText`.
+  Commit `TBD`.
 
 ---
 

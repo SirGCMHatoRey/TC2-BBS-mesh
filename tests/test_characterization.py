@@ -23,101 +23,63 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import contextlib
 import io
 import sqlite3
-import types
 
 import utils
 import db_operations
 import message_processing
 import settings
 from settings import Menus
+from fakes import FakeTransport, make_node
 
-# utils does `import time; time.sleep(2)` to pace the radio. Replace the module
-# reference inside utils only -- assigning to utils.time.sleep would mutate the
-# real time module for the whole process, and other tests need a working sleep.
-utils.time = types.SimpleNamespace(sleep=lambda *a, **k: None)
+MENUS = Menus(main=["Q", "B", "U", "X"],
+              bbs=["M", "B", "C", "J", "X"],
+              utilities=["S", "F", "W", "X"])
 
-# Menus and fortunes are injected, so the suite never reads config.ini or
-# fortunes.txt. Nothing reads the filesystem at import any more.
-settings.configure(
-    menus=Menus(main=["Q", "B", "U", "X"],
-                bbs=["M", "B", "C", "J", "X"],
-                utilities=["S", "F", "W", "X"]),
-    fortunes=["Stay curious"],
-    js8_db_path=None,          # the JS8Call bridge is not set up
-)
+
+def _settings(bbs_nodes=(), allowed_nodes=()):
+    """Everything the router reads from config, injected. No file is opened."""
+    settings.reset()
+    settings.configure(menus=MENUS, fortunes=["Stay curious"], js8_db_path=None,
+                       bbs_nodes=list(bbs_nodes), allowed_nodes=list(allowed_nodes))
 
 
 # --------------------------------------------------------------------------
-# Fake interface + harness
+# Harness
 # --------------------------------------------------------------------------
-
-class _Sent:
-    """Stand-in for the packet meshtastic returns from sendText."""
-
-    def __init__(self, packet_id):
-        self.id = packet_id
-
-
-class FakeInterface:
-    """Records outbound text instead of transmitting it."""
-
-    def __init__(self, nodes, my_num, allowed_nodes=None, bbs_nodes=None):
-        self.nodes = nodes
-        self.myInfo = types.SimpleNamespace(my_node_num=my_num)
-        self.allowed_nodes = allowed_nodes or []
-        self.bbs_nodes = bbs_nodes or []
-        self.outbox = []          # list of (destination_num, text)
-        self._packet_id = 0
-
-    def sendText(self, text, destinationId, wantAck=True, wantResponse=False):
-        self.outbox.append((destinationId, text))
-        self._packet_id += 1
-        return _Sent(self._packet_id)
-
-
-def make_node(num, short, long_name, hw="TBEAM", role="CLIENT",
-              last_heard=None, battery=80):
-    return {
-        "num": num,
-        "user": {"shortName": short, "longName": long_name,
-                 "hwModel": hw, "role": role},
-        "lastHeard": last_heard,
-        "deviceMetrics": {"batteryLevel": battery},
-    }
-
 
 class Session:
-    """Thin shim over process_message, shaped like the future Session seam."""
+    """Thin shim over process_message, shaped like the Session seam."""
 
-    def __init__(self, interface, node_num):
-        self.interface = interface
+    def __init__(self, transport, node_num):
+        self.transport = transport
         self.node = node_num
 
     def advance(self, message):
         """Feed one inbound message, return the replies sent to this node."""
-        self.interface.outbox.clear()
-        message_processing.process_message(self.node, message, self.interface)
-        return [text for dest, text in self.interface.outbox if dest == self.node]
+        self.transport.clear()
+        message_processing.process_message(self.node, message, self.transport)
+        return self.transport.sent_to(self.node)
 
     def broadcasts(self):
         """Text sent to anywhere other than this node (e.g. mesh broadcast)."""
-        return [text for dest, text in self.interface.outbox if dest != self.node]
+        return [text for dest, text in self.transport.outbox if dest != self.node]
 
     def sync(self, message):
         """Feed one inbound sync message from a peer BBS Node."""
-        self.interface.outbox.clear()
-        message_processing.process_message(self.node, message, self.interface,
+        self.transport.clear()
+        message_processing.process_message(self.node, message, self.transport,
                                            is_sync_message=True)
-        return list(self.interface.outbox)
+        return list(self.transport.outbox)
 
 
 SENDER_NUM = 1001
 SENDER_ID = "!sender"
 
 
-def new_session(allowed_nodes=None, extra_nodes=None):
-    """Fresh conversation: cleared state + in-memory database."""
+def new_session(allowed_nodes=(), bbs_nodes=(), extra_nodes=None):
+    """Fresh conversation: cleared state, in-memory database, injected config."""
     utils.user_states.clear()
+    _settings(bbs_nodes=bbs_nodes, allowed_nodes=allowed_nodes)
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     db_operations.get_db_connection = lambda: conn
@@ -127,8 +89,7 @@ def new_session(allowed_nodes=None, extra_nodes=None):
     nodes = {SENDER_ID: make_node(SENDER_NUM, "SEND", "Sender Node")}
     if extra_nodes:
         nodes.update(extra_nodes)
-    interface = FakeInterface(nodes, my_num=9999, allowed_nodes=allowed_nodes)
-    return Session(interface, SENDER_NUM)
+    return Session(FakeTransport(nodes, my_num=9999), SENDER_NUM)
 
 
 def joined(replies):
@@ -309,7 +270,7 @@ def test_quick_post_bulletin_to_urgent_respects_allow_list():
     r = joined(s.advance("pb,,Urgent,,Fake alert,,ignore me"))
     assert "don't have permission" in r
     assert db_operations.get_bulletins("Urgent") == []
-    assert [t for _, t in s.interface.outbox if "NEW URGENT BULLETIN" in t] == []
+    assert [t for _, t in s.transport.outbox if "NEW URGENT BULLETIN" in t] == []
 
 
 def test_quick_post_bulletin_to_general_persists():
@@ -397,8 +358,7 @@ def test_channel_posted_via_menu_now_syncs_to_peers():
 
     Previously only the CHP,, quick command synced; the menu path did not.
     """
-    s = new_session()
-    s.interface.bbs_nodes = ["!peer"]
+    s = new_session(bbs_nodes=["!peer"])
     s.advance("b")
     s.advance("c")
     s.advance("p")            # post
@@ -406,8 +366,7 @@ def test_channel_posted_via_menu_now_syncs_to_peers():
     r = joined(s.advance("https://example/x"))
     assert "has been added to the directory" in r
 
-    to_peer = [t for d, t in s.interface.outbox if d == "!peer"]
-    assert to_peer == ["CHANNEL|MyNet|https://example/x"]
+    assert s.transport.sent_to("!peer") == ["CHANNEL|MyNet|https://example/x"]
     assert db_operations.get_channels() == [("MyNet", "https://example/x")]
 
 
@@ -416,7 +375,7 @@ def test_synced_channel_is_stored_not_answered():
     s = new_session()
     s.sync("CHANNEL|PeerNet|https://peer/x")
     assert db_operations.get_channels() == [("PeerNet", "https://peer/x")]
-    assert s.interface.outbox == []
+    assert s.transport.outbox == []
 
 
 # --------------------------------------------------------------------------
@@ -432,7 +391,7 @@ def test_synced_urgent_bulletin_broadcasts_once():
     s = new_session()
     s.sync("BULLETIN|Urgent|AA|Flood|Move now|uid-1")
 
-    urgent = [t for _, t in s.interface.outbox if "NEW URGENT BULLETIN" in t]
+    urgent = [t for _, t in s.transport.outbox if "NEW URGENT BULLETIN" in t]
     assert len(urgent) == 1, f"expected 1 broadcast, got {len(urgent)}"
     assert len(db_operations.get_bulletins("Urgent")) == 1
 
@@ -441,16 +400,15 @@ def test_synced_general_bulletin_does_not_broadcast():
     s = new_session()
     s.sync("BULLETIN|General|AA|Hello|Body|uid-2")
 
-    assert [t for _, t in s.interface.outbox if "NEW URGENT BULLETIN" in t] == []
+    assert [t for _, t in s.transport.outbox if "NEW URGENT BULLETIN" in t] == []
     assert len(db_operations.get_bulletins("General")) == 1
 
 
 def test_synced_bulletin_is_not_resynced_to_peers():
-    s = new_session()
-    s.interface.bbs_nodes = ["!peer"]
+    s = new_session(bbs_nodes=["!peer"])
     s.sync("BULLETIN|General|AA|Hello|Body|uid-3")
 
-    to_peer = [t for d, t in s.interface.outbox if d == "!peer"]
+    to_peer = s.transport.sent_to("!peer")
     assert to_peer == [], f"synced bulletin was echoed back to peers: {to_peer}"
 
 
@@ -484,7 +442,7 @@ def test_synced_mail_deletion_removes_it():
 def test_unknown_sync_message_is_ignored():
     s = new_session()
     s.sync("GARBAGE|whatever")
-    assert s.interface.outbox == []
+    assert s.transport.outbox == []
 
 
 if __name__ == "__main__":
