@@ -236,7 +236,7 @@ returns; `close()` shuts the socket down — which unblocks a listener parked in
 **Behaviour change:** the server starts, serves, and shuts down cleanly with
 JS8Call enabled.
 
-Commit `a35c3e8`. Tests: `test_js8_client.py::test_close_unblocks_and_joins_the_listener`,
+Commit `e0968c2`. Tests: `test_js8_client.py::test_close_unblocks_and_joins_the_listener`,
 `::test_peer_hangup_stops_the_listener_without_spinning`,
 `::test_start_returns_immediately_and_listens`.
 
@@ -264,7 +264,7 @@ it.
 
 **Behaviour change:** no silent message loss.
 
-Commit `a35c3e8`. Tests: `test_js8_client.py::test_two_messages_in_one_chunk`,
+Commit `e0968c2`. Tests: `test_js8_client.py::test_two_messages_in_one_chunk`,
 `::test_message_split_across_chunks`, `::test_two_messages_in_one_segment_are_both_stored`.
 
 ---
