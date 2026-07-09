@@ -89,6 +89,13 @@ class Session:
         """Text sent to anywhere other than this node (e.g. mesh broadcast)."""
         return [text for dest, text in self.interface.outbox if dest != self.node]
 
+    def sync(self, message):
+        """Feed one inbound sync message from a peer BBS Node."""
+        self.interface.outbox.clear()
+        message_processing.process_message(self.node, message, self.interface,
+                                           is_sync_message=True)
+        return list(self.interface.outbox)
+
 
 SENDER_NUM = 1001
 SENDER_ID = "!sender"
@@ -100,7 +107,6 @@ def new_session(allowed_nodes=None, extra_nodes=None):
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     db_operations.get_db_connection = lambda: conn
-    message_processing.get_db_connection = lambda: conn
     with contextlib.redirect_stdout(io.StringIO()):
         db_operations.initialize_database()
 
@@ -259,6 +265,74 @@ def test_urgent_post_allowed_broadcasts():
     broadcast = joined(s.broadcasts())
     assert "NEW URGENT BULLETIN" in broadcast
     assert len(db_operations.get_bulletins("Urgent")) == 1
+
+
+# --------------------------------------------------------------------------
+# Sync (replication from a peer BBS Node)
+# --------------------------------------------------------------------------
+
+def test_synced_urgent_bulletin_broadcasts_once():
+    """An Urgent Bulletin arriving from a peer notifies the mesh exactly once.
+
+    Before the store/replication split this fired twice: add_bulletin
+    broadcast, and the sync branch broadcast again.
+    """
+    s = new_session()
+    s.sync("BULLETIN|Urgent|AA|Flood|Move now|uid-1")
+
+    urgent = [t for _, t in s.interface.outbox if "NEW URGENT BULLETIN" in t]
+    assert len(urgent) == 1, f"expected 1 broadcast, got {len(urgent)}"
+    assert len(db_operations.get_bulletins("Urgent")) == 1
+
+
+def test_synced_general_bulletin_does_not_broadcast():
+    s = new_session()
+    s.sync("BULLETIN|General|AA|Hello|Body|uid-2")
+
+    assert [t for _, t in s.interface.outbox if "NEW URGENT BULLETIN" in t] == []
+    assert len(db_operations.get_bulletins("General")) == 1
+
+
+def test_synced_bulletin_is_not_resynced_to_peers():
+    s = new_session()
+    s.interface.bbs_nodes = ["!peer"]
+    s.sync("BULLETIN|General|AA|Hello|Body|uid-3")
+
+    to_peer = [t for d, t in s.interface.outbox if d == "!peer"]
+    assert to_peer == [], f"synced bulletin was echoed back to peers: {to_peer}"
+
+
+def test_synced_mail_is_stored():
+    s = new_session()
+    s.sync("MAIL|!bob|BOB|!me|Subject|Body|uid-4")
+    assert len(db_operations.get_mail("!me")) == 1
+
+
+def test_synced_bulletin_deletion_removes_it():
+    """A replicated deletion matches on unique_id.
+
+    Previously delete_bulletin matched on the local autoincrement id while the
+    sync path passed a unique_id, so the row was never removed.
+    """
+    s = new_session()
+    s.sync("BULLETIN|General|AA|Hello|Body|uid-5")
+    assert len(db_operations.get_bulletins("General")) == 1
+
+    s.sync("DELETE_BULLETIN|uid-5")
+    assert db_operations.get_bulletins("General") == []
+
+
+def test_synced_mail_deletion_removes_it():
+    s = new_session()
+    s.sync("MAIL|!bob|BOB|!me|Subject|Body|uid-6")
+    s.sync("DELETE_MAIL|uid-6")
+    assert db_operations.get_mail("!me") == []
+
+
+def test_unknown_sync_message_is_ignored():
+    s = new_session()
+    s.sync("GARBAGE|whatever")
+    assert s.interface.outbox == []
 
 
 if __name__ == "__main__":

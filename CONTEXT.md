@@ -83,6 +83,11 @@ Replication of a Bulletin, Mail, or a deletion from this server to its BBS
 Nodes, carried as specially-prefixed mesh messages. Distinct from conversation.
 _Avoid_: broadcast (that is the mesh-wide notify for Urgent), federation.
 
+**Origin**:
+Where a record came from — created by a local Node, or arrived from a peer BBS
+Node. A record that arrived from a peer is never synced back out.
+_Avoid_: source, direction.
+
 ### JS8Call bridge
 
 **Station**:

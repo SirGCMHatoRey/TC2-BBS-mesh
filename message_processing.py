@@ -1,21 +1,20 @@
 import logging
 
-from meshtastic import BROADCAST_NUM
-
 from command_handlers import (
     handle_mail_command, handle_bulletin_command, handle_help_command, handle_stats_command, handle_fortune_command,
-    handle_bb_steps, handle_mail_steps, handle_stats_steps, handle_wall_of_shame_command,
+    handle_wall_of_shame_command,
     handle_channel_directory_command, handle_channel_directory_steps, handle_send_mail_command,
-    handle_read_mail_command, handle_check_mail_command, handle_delete_mail_confirmation, handle_post_bulletin_command,
+    handle_check_mail_command, handle_post_bulletin_command,
     handle_check_bulletin_command, handle_read_bulletin_command, handle_read_channel_command,
     handle_post_channel_command, handle_list_channels_command, handle_quick_help_command
 )
-from db_operations import add_bulletin, add_mail, delete_bulletin, delete_mail, get_db_connection, add_channel
 from js8call_integration import handle_js8call_command, handle_js8call_steps, handle_group_message_selection
 from utils import get_user_state, get_node_short_name, get_node_id_from_num, send_message, update_user_state
 from session import Session
 from flows.base import Deps, GOTO_MAIN, GOTO_BBS, GOTO_UTILITIES
 from adapters import Store, Lookup
+from events import Origin
+import replication
 
 # Deep dispatcher for migrated conversation topics. Topics not yet registered
 # fall through to the legacy handle_*_steps path below.
@@ -74,21 +73,6 @@ utilities_menu_handlers = {
 }
 
 
-bulletin_menu_handlers = {
-    "g": lambda sender_id, interface: handle_bb_steps(sender_id, '0', 1, {'board': 'General'}, interface, None),
-    "i": lambda sender_id, interface: handle_bb_steps(sender_id, '1', 1, {'board': 'Info'}, interface, None),
-    "n": lambda sender_id, interface: handle_bb_steps(sender_id, '2', 1, {'board': 'News'}, interface, None),
-    "u": lambda sender_id, interface: handle_bb_steps(sender_id, '3', 1, {'board': 'Urgent'}, interface, None),
-    "x": handle_help_command
-}
-
-
-board_action_handlers = {
-    "r": lambda sender_id, interface, state: handle_bb_steps(sender_id, 'r', 2, state, interface, None),
-    "p": lambda sender_id, interface, state: handle_bb_steps(sender_id, 'p', 2, state, interface, None),
-    "x": handle_help_command
-}
-
 def process_message(sender_id, message, interface, is_sync_message=False):
     state = get_user_state(sender_id)
     message_lower = message.lower().strip()
@@ -101,30 +85,14 @@ def process_message(sender_id, message, interface, is_sync_message=False):
         message_lower = message_lower[0]
 
     if is_sync_message:
-        if message.startswith("BULLETIN|"):
-            parts = message.split("|")
-            board, sender_short_name, subject, content, unique_id = parts[1], parts[2], parts[3], parts[4], parts[5]
-            add_bulletin(board, sender_short_name, subject, content, [], interface, unique_id=unique_id)
-
-            if board.lower() == "urgent":
-                notification_message = f"💥NEW URGENT BULLETIN💥\nFrom: {sender_short_name}\nTitle: {subject}\nDM 'CB,,Urgent' to view"
-                send_message(notification_message, BROADCAST_NUM, interface)
-        elif message.startswith("MAIL|"):
-            parts = message.split("|")
-            sender_id, sender_short_name, recipient_id, subject, content, unique_id = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]
-            add_mail(sender_id, sender_short_name, recipient_id, subject, content, [], interface, unique_id=unique_id)
-        elif message.startswith("DELETE_BULLETIN|"):
-            unique_id = message.split("|")[1]
-            delete_bulletin(unique_id, [], interface)
-        elif message.startswith("DELETE_MAIL|"):
-            unique_id = message.split("|")[1]
-            logging.info(f"Processing delete mail with unique_id: {unique_id}")
-            recipient_id = get_recipient_id_by_mail(unique_id)
-            delete_mail(unique_id, recipient_id, [], interface)
-        elif message.startswith("CHANNEL|"):
-            parts = message.split("|")
-            channel_name, channel_url = parts[1], parts[2]
-            add_channel(channel_name, channel_url)
+        # A record from a peer: store it, then let Replication decide whether
+        # the mesh needs to hear about it. It is never echoed back to peers.
+        event = replication.decode(message)
+        if event is None:
+            logging.error(f"Unrecognized sync message: {message!r}")
+            return
+        Store(interface).accept(event)
+        replication.Replication(interface).publish(event, Origin.SYNCED)
     else:
         if message_lower.startswith("sm,,"):
             handle_send_mail_command(sender_id, message_strip, interface, bbs_nodes)
@@ -147,10 +115,6 @@ def process_message(sender_id, message, interface, is_sync_message=False):
                     handlers = utilities_menu_handlers
                 else:
                     handlers = main_menu_handlers
-            elif state and state['command'] == 'BULLETIN_MENU':
-                handlers = bulletin_menu_handlers
-            elif state and state['command'] == 'BULLETIN_ACTION':
-                handlers = board_action_handlers
             elif state and state['command'] == 'JS8CALL_MENU':
                 handle_js8call_steps(sender_id, message, state['step'], interface, state)
                 return
@@ -172,10 +136,7 @@ def process_message(sender_id, message, interface, is_sync_message=False):
                 return
 
             if message_lower in handlers:
-                if state and state['command'] in ['BULLETIN_ACTION', 'BULLETIN_READ', 'BULLETIN_POST', 'BULLETIN_POST_CONTENT']:
-                    handlers[message_lower](sender_id, interface, state)
-                else:
-                    handlers[message_lower](sender_id, interface)
+                handlers[message_lower](sender_id, interface)
             elif state:
                 command = state['command']
                 step = state['step']
@@ -218,8 +179,7 @@ def on_receive(packet, interface):
             logging.info(f"Received message from user '{sender_short_name}' ({sender_node_id}) to {receiver_short_name}: {message_string}")
 
             bbs_nodes = interface.bbs_nodes
-            is_sync_message = any(message_string.startswith(prefix) for prefix in
-                                  ["BULLETIN|", "MAIL|", "DELETE_BULLETIN|", "DELETE_MAIL|"])
+            is_sync_message = replication.is_sync_message(message_string)
 
             if sender_node_id in bbs_nodes:
                 if is_sync_message:
@@ -232,13 +192,3 @@ def on_receive(packet, interface):
                 logging.info("Ignoring message sent to group chat or from unknown node")
     except KeyError as e:
         logging.error(f"Error processing packet: {e}")
-
-def get_recipient_id_by_mail(unique_id):
-    # Fix for Mail Delete sync issue
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT recipient FROM mail WHERE unique_id = ?", (unique_id,))
-    result = c.fetchone()
-    if result:
-        return result[0]
-    return None
