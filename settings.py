@@ -8,8 +8,12 @@ import configparser
 from dataclasses import dataclass
 from typing import List
 
+from js8_db import Js8Database
+
 CONFIG_FILE = 'config.ini'
 FORTUNES_FILE = 'fortunes.txt'
+
+_UNSET = object()
 
 
 @dataclass(frozen=True)
@@ -23,21 +27,50 @@ class Menus:
 
 _menus = None
 _fortunes = None
+_js8_db_path = _UNSET
+_js8_database = None
 
 
-def configure(menus=None, fortunes=None):
+def configure(menus=None, fortunes=None, js8_db_path=_UNSET):
     """Override what would otherwise be read from disk."""
-    global _menus, _fortunes
+    global _menus, _fortunes, _js8_db_path, _js8_database
     if menus is not None:
         _menus = menus
     if fortunes is not None:
         _fortunes = fortunes
+    if js8_db_path is not _UNSET:
+        _js8_db_path = js8_db_path
+        _js8_database = None
 
 
 def reset():
-    global _menus, _fortunes
+    global _menus, _fortunes, _js8_db_path, _js8_database
     _menus = None
     _fortunes = None
+    _js8_db_path = _UNSET
+    _js8_database = None
+
+
+def _config():
+    config = configparser.ConfigParser()
+    config.read(CONFIG_FILE)
+    return config
+
+
+def js8_db_path():
+    """Where the JS8Call store lives, or None when the bridge is not set up."""
+    global _js8_db_path
+    if _js8_db_path is _UNSET:
+        _js8_db_path = _config().get('js8call', 'db_file', fallback=None)
+    return _js8_db_path
+
+
+def js8_database():
+    """The one Js8Database everything shares — reader and writer alike."""
+    global _js8_database
+    if _js8_database is None:
+        _js8_database = Js8Database(js8_db_path())
+    return _js8_database
 
 
 def menus():

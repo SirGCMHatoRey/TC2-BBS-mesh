@@ -5,7 +5,6 @@ from command_handlers import (
     handle_check_bulletin_command, handle_read_bulletin_command,
     handle_post_channel_command, handle_list_channels_command,
 )
-from js8call_integration import handle_js8call_steps, handle_group_message_selection
 from utils import get_user_state, get_node_short_name, get_node_id_from_num, send_message, update_user_state
 from session import Session
 from flows.base import Deps, GOTO_MAIN
@@ -14,8 +13,8 @@ from events import Origin
 import replication
 import settings
 
-# Deep dispatcher for migrated conversation topics. Topics not yet registered
-# (JS8Call, the CB,, bulletin read) fall through to the legacy path below.
+# Deep dispatcher for conversation topics. The CB,, bulletin read is the only
+# stepped state still outside a flow.
 _SESSION = Session()
 
 
@@ -27,6 +26,7 @@ def _build_deps(sender_id, interface):
         node_num=sender_id,
         node_id=get_node_id_from_num(sender_id, interface),
         allowed_nodes=getattr(interface, "allowed_nodes", []),
+        js8=settings.js8_database(),
         menus=settings.menus(),
         fortunes=settings.fortunes(),
     )
@@ -117,12 +117,8 @@ def process_message(sender_id, message, interface, is_sync_message=False):
         _enact(sender_id, result, deps, interface)
         return
 
-    # Not yet migrated.
-    if topic == 'JS8CALL_MENU':
-        handle_js8call_steps(sender_id, message, state['step'], interface, state)
-    elif topic == 'GROUP_MESSAGES':
-        handle_group_message_selection(sender_id, message, state['step'], state, interface)
-    elif topic == 'CHECK_BULLETIN' and state['step'] == 1:
+    # The CB,, bulletin read is the last stepped state outside a flow.
+    if topic == 'CHECK_BULLETIN' and state['step'] == 1:
         handle_read_bulletin_command(sender_id, message, state, interface)
     else:
         _show_main_menu(sender_id, interface)

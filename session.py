@@ -15,6 +15,7 @@ to the legacy path.
 
 from flows.bulletin import BulletinFlow
 from flows.channel import ChannelFlow
+from flows.js8 import Js8Flow
 from flows.mail import MailFlow
 from flows.navigation import NavigationFlow
 from flows.stats import StatsFlow
@@ -27,7 +28,7 @@ def _topics(flow):
 
 
 def _default_flows():
-    return [NavigationFlow(), StatsFlow(), BulletinFlow(), MailFlow(), ChannelFlow()]
+    return [NavigationFlow(), StatsFlow(), BulletinFlow(), MailFlow(), ChannelFlow(), Js8Flow()]
 
 
 class Session:

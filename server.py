@@ -76,7 +76,7 @@ def main():
     js8call_client = JS8CallClient(interface)
     js8call_client.logger = js8call_logger
 
-    if js8call_client.db_conn:
+    if js8call_client.database.configured:
         js8call_client.connect()
 
     try:

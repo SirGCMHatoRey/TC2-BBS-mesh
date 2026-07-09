@@ -22,11 +22,6 @@ UTILITIES_TITLE = "🛠️Utilities Menu🛠️"
 QUICK_HELP = ("✈️QUICK COMMANDS✈️\nSend command below for usage info:\nSM,, - Send "
               "Mail\nCM - Check Mail\nPB,, - Post Bulletin\nCB,, - Check Bulletins\n")
 
-# JS8Call has no Flow yet, so Navigation still supplies its opening. Once
-# Js8Flow exists this becomes an `enter` like the others.
-JS8_MENU = ("JS8Call Menu:\n[G]roup Messages\n[S]tation Messages\n"
-            "[U]rgent Messages\nE[X]IT")
-
 _WALL_OF_SHAME_HEADER = "Devices with battery levels below 20%:\n"
 
 
@@ -117,8 +112,7 @@ class NavigationFlow:
         if choice == "c":
             return FlowResult(enter="CHANNEL_DIRECTORY")
         if choice == "j":
-            return FlowResult(replies=[JS8_MENU],
-                              next_state={"command": "JS8CALL_MENU", "step": 1})
+            return FlowResult(enter="JS8CALL_MENU")
         return self.show(GOTO_MAIN, deps)
 
     def _utilities(self, choice, state, deps):

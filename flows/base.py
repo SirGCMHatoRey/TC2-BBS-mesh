@@ -30,6 +30,7 @@ class Deps:
     node_num: Any = None                         # acting node's mesh number (the sender)
     node_id: Any = None                          # acting node's id, resolved from the roster
     allowed_nodes: List[str] = field(default_factory=list)   # urgent-board allow-list
+    js8: Any = None                              # Js8Database — what the JS8Call bridge heard
     menus: Any = None                            # settings.Menus — which letters each menu offers
     fortunes: List[str] = field(default_factory=list)
 

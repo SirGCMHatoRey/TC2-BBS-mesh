@@ -35,6 +35,7 @@ settings.configure(
                 bbs=["M", "B", "C", "J", "X"],
                 utilities=["S", "F", "W", "X"]),
     fortunes=["Stay curious"],
+    js8_db_path=None,          # the JS8Call bridge is not set up
 )
 
 
@@ -197,6 +198,20 @@ def test_bbs_menu_enters_js8call():
     s.advance("b")
     r = joined(s.advance("j"))
     assert "JS8Call Menu" in r
+
+
+def test_js8call_reads_answer_gracefully_when_unconfigured():
+    """Browsing an unconfigured JS8Call bridge reads as empty, not as a crash.
+
+    The old handlers opened js8call.db directly and let sqlite raise
+    OperationalError at the user when the tables did not exist.
+    """
+    s = new_session()
+    s.advance("b")
+    s.advance("j")
+    assert "No group messages available." in joined(s.advance("g"))
+    assert "No station messages available." in joined(s.advance("s"))
+    assert "No urgent messages available." in joined(s.advance("u"))
 
 
 # --------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 from flows.base import Deps
 from flows.navigation import (
-    BBS_TITLE, JS8_MENU, NavigationFlow, QUICK_HELP, UTILITIES_TITLE, build_menu,
+    BBS_TITLE, NavigationFlow, QUICK_HELP, UTILITIES_TITLE, build_menu,
 )
 from settings import Menus
 
@@ -87,12 +87,7 @@ def test_bbs_selections_enter_flows():
     assert nav.advance("m", BBS, deps()).enter == "MAIL"
     assert nav.advance("b", BBS, deps()).enter == "BULLETIN_MENU"
     assert nav.advance("c", BBS, deps()).enter == "CHANNEL_DIRECTORY"
-
-
-def test_bbs_js8_opens_inline_until_it_has_a_flow():
-    r = NavigationFlow().advance("j", BBS, deps())
-    assert r.replies == [JS8_MENU]
-    assert r.next_state == {"command": "JS8CALL_MENU", "step": 1}
+    assert nav.advance("j", BBS, deps()).enter == "JS8CALL_MENU"
 
 
 def test_bbs_unknown_falls_back_to_main():
