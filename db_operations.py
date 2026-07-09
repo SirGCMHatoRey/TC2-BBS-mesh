@@ -74,6 +74,26 @@ def get_channels():
     return c.fetchall()
 
 
+def all_channels():
+    """Every channel with its row id, for the admin tool."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT id, name, url FROM channels")
+    return c.fetchall()
+
+
+def delete_channel(channel_id):
+    """Delete by row id. Channels carry no unique_id and are never replicated."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT id FROM channels WHERE id = ?", (channel_id,))
+    if c.fetchone() is None:
+        return False
+    c.execute("DELETE FROM channels WHERE id = ?", (channel_id,))
+    conn.commit()
+    return True
+
+
 # --- bulletins -------------------------------------------------------------
 
 def insert_bulletin(board, sender_short_name, subject, content, unique_id=None):
@@ -95,6 +115,17 @@ def get_bulletins(board):
     c = conn.cursor()
     c.execute("SELECT id, subject, sender_short_name, date, unique_id "
               "FROM bulletins WHERE board = ? COLLATE NOCASE", (board,))
+    return c.fetchall()
+
+
+def all_bulletins():
+    """Every bulletin across every board, for the admin tool.
+
+    The unique_id comes last, which is the identity deletions use.
+    """
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT id, board, sender_short_name, date, subject, unique_id FROM bulletins")
     return c.fetchall()
 
 
@@ -145,6 +176,17 @@ def get_mail(recipient_id):
     c = conn.cursor()
     c.execute("SELECT id, sender_short_name, subject, date, unique_id "
               "FROM mail WHERE recipient = ?", (recipient_id,))
+    return c.fetchall()
+
+
+def all_mail():
+    """Every mail in every mailbox, for the admin tool.
+
+    The unique_id comes last, which is the identity deletions use.
+    """
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT id, sender, sender_short_name, recipient, date, subject, unique_id FROM mail")
     return c.fetchall()
 
 

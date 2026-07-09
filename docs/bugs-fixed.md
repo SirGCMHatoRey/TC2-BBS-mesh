@@ -269,6 +269,28 @@ Commit `e0968c2`. Tests: `tests/test_js8_client.py::test_two_messages_in_one_chu
 
 ---
 
+## 13. `db_admin.list_mail()` returned one row instead of the list
+
+```python
+mail = c.fetchall()
+if mail:
+    for mail in mail:            # rebinds the name it is iterating
+        print_bold(...)
+return mail                      # the last row, not the list
+```
+
+The loop variable shadowed the list. `list_bulletins` and `list_channels` used
+distinct names and were fine; only mail had it. It never surfaced because the
+one caller did `if mail:` and a non-empty tuple is truthy, so the wrong type was
+never noticed.
+
+**Fix:** `for row in mail`. The listing functions are now tested for returning
+every row.
+
+Commit `TBD`. Test: `tests/test_db_admin.py::test_list_mail_returns_every_row`.
+
+---
+
 ## Deliberate behaviour changes that were not bugs
 
 - **Adding a Channel now replicates from either entry point.** Previously only
@@ -291,8 +313,11 @@ Commit `e0968c2`. Tests: `tests/test_js8_client.py::test_two_messages_in_one_chu
 
 ## Known, not fixed
 
-- **`db_admin.py` re-declares the entire database schema**, a copy of the one in
-  `db_operations.py`. They can drift.
+- **Bulletin deletions never replicate.** `db_admin.py` is the only place that
+  deletes a bulletin, and it has no radio — opening the serial port while the
+  server holds it would conflict. So `DELETE_BULLETIN|` has a receiver and no
+  sender. Deleting a bulletin leaves every peer holding its copy. (Mail is
+  different: deleting mail through the BBS does replicate.)
 
 - **The JS8Call bridge does not reconnect.** If the JS8Call instance restarts,
   the listener exits cleanly and stays down until the server is restarted.
