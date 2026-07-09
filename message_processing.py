@@ -1,10 +1,12 @@
+"""The router: decides whether an inbound message is replication or conversation,
+hands conversation to the Session, and does the sending.
+
+Every dispatch decision now lives behind the Session seam. Nothing stepped
+remains here.
+"""
+
 import logging
 
-from command_handlers import (
-    handle_send_mail_command, handle_check_mail_command, handle_post_bulletin_command,
-    handle_check_bulletin_command, handle_read_bulletin_command,
-    handle_post_channel_command, handle_list_channels_command,
-)
 from utils import get_user_state, get_node_short_name, get_node_id_from_num, send_message, update_user_state
 from session import Session
 from flows.base import Deps, GOTO_MAIN
@@ -13,8 +15,6 @@ from events import Origin
 import replication
 import settings
 
-# Deep dispatcher for conversation topics. The CB,, bulletin read is the only
-# stepped state still outside a flow.
 _SESSION = Session()
 
 
@@ -49,7 +49,8 @@ def _enact(sender_id, result, deps, interface):
     elif result.enter is not None:
         handed_off = _SESSION.enter(result.enter, deps)
     else:
-        update_user_state(sender_id, result.next_state)
+        if not result.keep_state:
+            update_user_state(sender_id, result.next_state)
         return
 
     for reply in handed_off.replies:
@@ -57,22 +58,7 @@ def _enact(sender_id, result, deps, interface):
     update_user_state(sender_id, handed_off.next_state)
 
 
-def _show_main_menu(sender_id, interface):
-    deps = _build_deps(sender_id, interface)
-    _enact(sender_id, _SESSION.show(GOTO_MAIN, deps), deps, interface)
-
-
 def process_message(sender_id, message, interface, is_sync_message=False):
-    state = get_user_state(sender_id)
-    message_lower = message.lower().strip()
-    message_strip = message.strip()
-
-    bbs_nodes = interface.bbs_nodes
-
-    # Handle repeated characters for single character commands using a prefix
-    if len(message_lower) == 2 and message_lower[1] == 'x':
-        message_lower = message_lower[0]
-
     if is_sync_message:
         # A record from a peer: store it, then let Replication decide whether
         # the mesh needs to hear about it. It is never echoed back to peers.
@@ -84,44 +70,35 @@ def process_message(sender_id, message, interface, is_sync_message=False):
         replication.Replication(interface).publish(event, Origin.SYNCED)
         return
 
-    if message_lower.startswith("sm,,"):
-        handle_send_mail_command(sender_id, message_strip, interface, bbs_nodes)
-        return
-    if message_lower.startswith("cm"):
-        handle_check_mail_command(sender_id, interface)
-        return
-    if message_lower.startswith("pb,,"):
-        handle_post_bulletin_command(sender_id, message_strip, interface, bbs_nodes)
-        return
-    if message_lower.startswith("cb,,"):
-        handle_check_bulletin_command(sender_id, message_strip, interface)
-        return
-    if message_lower.startswith("chp,,"):
-        handle_post_channel_command(sender_id, message_strip, interface)
-        return
-    if message_lower.startswith("chl"):
-        handle_list_channels_command(sender_id, interface)
+    state = get_user_state(sender_id)
+    message_strip = message.strip()
+    message_lower = message_strip.lower()
+
+    # Handle repeated characters for single character commands using a prefix
+    if len(message_lower) == 2 and message_lower[1] == 'x':
+        message_lower = message_lower[0]
+
+    deps = _build_deps(sender_id, interface)
+
+    # Quick commands act from anywhere, without moving the conversation.
+    result = _SESSION.quick(message_strip, deps)
+    if result is not None:
+        _enact(sender_id, result, deps, interface)
         return
 
     # EXIT from anywhere returns to the main menu, before any flow sees it.
     if message_lower == 'x':
-        _show_main_menu(sender_id, interface)
+        _enact(sender_id, _SESSION.show(GOTO_MAIN, deps), deps, interface)
         return
 
     # No state means the conversation is sitting at the main menu.
     topic = state['command'] if state else 'MAIN_MENU'
-
-    if _SESSION.handles(topic):
-        deps = _build_deps(sender_id, interface)
-        result = _SESSION.advance(topic, message, state or {'command': 'MAIN_MENU', 'step': 1}, deps)
-        _enact(sender_id, result, deps, interface)
+    if not _SESSION.handles(topic):
+        _enact(sender_id, _SESSION.show(GOTO_MAIN, deps), deps, interface)
         return
 
-    # The CB,, bulletin read is the last stepped state outside a flow.
-    if topic == 'CHECK_BULLETIN' and state['step'] == 1:
-        handle_read_bulletin_command(sender_id, message, state, interface)
-    else:
-        _show_main_menu(sender_id, interface)
+    result = _SESSION.advance(topic, message, state or {'command': 'MAIN_MENU', 'step': 1}, deps)
+    _enact(sender_id, result, deps, interface)
 
 
 def on_receive(packet, interface):

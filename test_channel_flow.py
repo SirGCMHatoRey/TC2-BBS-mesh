@@ -127,6 +127,49 @@ def test_check_channel_topic_reads_the_same_way():
     assert "Channel Name: Net" in r.replies[0]
 
 
+# --- CHP,, quick post ------------------------------------------------------
+
+def test_quick_post_adds_channel():
+    """The old parser split on '|' and could never succeed."""
+    store = FakeStore()
+    r = ChannelFlow().quick_post("chp,,MyNet,,https://example/x", deps(store))
+    assert store.added == [("MyNet", "https://example/x")]
+    assert r.replies == ["Channel 'MyNet' has been added to the directory."]
+    assert r.keep_state
+
+
+def test_quick_post_keeps_url_containing_commas():
+    store = FakeStore()
+    ChannelFlow().quick_post("chp,,Net,,https://x?a=1,,b=2", deps(store))
+    assert store.added[0][1] == "https://x?a=1,,b=2"
+
+
+def test_quick_post_usage_on_bad_format():
+    r = ChannelFlow().quick_post("chp,,NoUrl", deps())
+    assert "Post Channel Quick Command format" in r.replies[0]
+    assert r.keep_state
+
+
+def test_quick_post_usage_on_empty_fields():
+    r = ChannelFlow().quick_post("chp,,,,", deps())
+    assert "Post Channel Quick Command format" in r.replies[0]
+
+
+# --- CHL quick list --------------------------------------------------------
+
+def test_quick_list_empty():
+    r = ChannelFlow().quick_list("chl", deps())
+    assert r.replies == ["No channels available in the directory."]
+    assert r.keep_state
+
+
+def test_quick_list_awaits_a_number():
+    store = FakeStore(channels=[("Net", "url1")])
+    r = ChannelFlow().quick_list("chl", deps(store))
+    assert "01. Name: Net" in r.replies[0]
+    assert r.next_state["command"] == "LIST_CHANNELS"
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0

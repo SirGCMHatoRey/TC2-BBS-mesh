@@ -61,6 +61,10 @@ class FlowResult:
     #: router asks that Flow for its entry — its greeting and starting state —
     #: so each Flow owns its own opening rather than Navigation knowing them all.
     enter: Optional[str] = None
+    #: Leave the conversation exactly where it was. Quick commands act without
+    #: moving you: sending SM,, mid-compose sends the mail and leaves you in
+    #: the compose step, as it always has.
+    keep_state: bool = False
     #: Out-of-band messages to nodes other than the sender, as (destination,
     #: text) pairs — e.g. the "you have new mail" nudge to a recipient. The
     #: router sends these after the replies. This is the cross-node messaging

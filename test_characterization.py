@@ -288,6 +288,46 @@ def test_quick_check_bulletin_empty_board():
     assert "No bulletins available on General board" in r
 
 
+def test_quick_check_bulletin_unknown_board():
+    """Used to answer 'Error processing check bulletin command.' via StopIteration."""
+    s = new_session()
+    r = joined(s.advance("cb,,Sports"))
+    assert "Unknown board 'Sports'" in r
+
+
+def test_quick_post_bulletin_to_urgent_respects_allow_list():
+    """PB,,Urgent used to bypass the allow-list and broadcast to the whole mesh."""
+    s = new_session(allowed_nodes=["!someone_else"])
+    r = joined(s.advance("pb,,Urgent,,Fake alert,,ignore me"))
+    assert "don't have permission" in r
+    assert db_operations.get_bulletins("Urgent") == []
+    assert [t for _, t in s.interface.outbox if "NEW URGENT BULLETIN" in t] == []
+
+
+def test_quick_post_bulletin_to_general_persists():
+    s = new_session()
+    r = joined(s.advance("pb,,general,,Subj,,Body"))
+    assert "posted to General" in r
+    assert len(db_operations.get_bulletins("General")) == 1
+
+
+def test_quick_post_channel_actually_works():
+    """CHP,, split on '|' while its usage promised ',,' — it never succeeded."""
+    s = new_session()
+    r = joined(s.advance("chp,,MyNet,,https://example/x"))
+    assert "has been added to the directory" in r
+    assert db_operations.get_channels() == [("MyNet", "https://example/x")]
+
+
+def test_quick_command_leaves_the_conversation_where_it_was():
+    s = new_session()
+    s.advance("b")            # bbs menu
+    s.advance("m")            # mail menu -> MAIL step 1
+    s.advance("chl")          # a quick command, mid-flow
+    # Still in the mail menu: 'r' reads the mailbox rather than reopening a menu.
+    assert "no messages in your mailbox" in joined(s.advance("r"))
+
+
 def test_post_bulletin_to_general_persists():
     s = new_session()
     s.advance("b")            # bbs menu

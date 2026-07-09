@@ -26,10 +26,16 @@ class FakeStore:
         return "uid-1"
 
 
+class FakeLookup:
+    def short_name(self, node_id):
+        return "ME"
+
+
 def deps(store=None, node_id="!me", allowed=None, roster=None):
     return Deps(
         roster=roster if roster is not None else {"!me": {"user": {"shortName": "ME"}}},
         store=store or FakeStore(),
+        lookup=FakeLookup(),
         node_num=1001,
         node_id=node_id,
         allowed_nodes=allowed or [],
@@ -136,6 +142,101 @@ def test_end_without_node_info_errors():
     assert "Unable to retrieve your node information" in r.replies[0]
     assert r.next_state is None
     assert store.added == []
+
+
+# --- PB,, quick post -------------------------------------------------------
+
+def test_quick_post_usage_on_bad_format():
+    r = BulletinFlow().quick_post("pb,,only,,two", deps())
+    assert "Post Bulletin Quick Command format" in r.replies[0]
+    assert r.keep_state
+
+
+def test_quick_post_rejects_unknown_board():
+    r = BulletinFlow().quick_post("pb,,Sports,,Subj,,Body", deps())
+    assert r.replies == ["Unknown board 'Sports'. Try General, Info, News, or Urgent."]
+    assert r.keep_state
+
+
+def test_quick_post_to_general_succeeds():
+    store = FakeStore()
+    r = BulletinFlow().quick_post("pb,,general,,Subj,,Body", deps(store))
+    # The canonical board name is used, not whatever case was typed.
+    assert store.added == [("General", "ME", "Subj", "Body")]
+    assert "posted to General" in r.replies[0]
+    assert r.keep_state
+
+
+def test_quick_post_to_urgent_respects_the_allow_list():
+    """PB,,Urgent used to bypass the allow-list entirely and broadcast."""
+    store = FakeStore()
+    d = deps(store, node_id="!me", allowed=["!someone_else"])
+    r = BulletinFlow().quick_post("pb,,Urgent,,Fake alert,,ignore", d)
+    assert r.replies == ["You don't have permission to post to this board."]
+    assert store.added == []
+
+
+def test_quick_post_to_urgent_allowed_when_listed():
+    store = FakeStore()
+    d = deps(store, node_id="!me", allowed=["!me"])
+    r = BulletinFlow().quick_post("pb,,Urgent,,Real alert,,move", d)
+    assert store.added == [("Urgent", "ME", "Real alert", "move")]
+
+
+def test_quick_post_to_urgent_allowed_when_no_list_configured():
+    store = FakeStore()
+    r = BulletinFlow().quick_post("pb,,Urgent,,Alert,,move", deps(store, allowed=[]))
+    assert store.added == [("Urgent", "ME", "Alert", "move")]
+
+
+# --- CB,, quick check ------------------------------------------------------
+
+def test_quick_check_usage_on_bad_format():
+    r = BulletinFlow().quick_check("cb,,", deps())
+    assert "Check Bulletins Quick Command format" in r.replies[0]
+
+
+def test_quick_check_rejects_unknown_board():
+    r = BulletinFlow().quick_check("cb,,Sports", deps())
+    assert r.replies == ["Unknown board 'Sports'. Try General, Info, News, or Urgent."]
+
+
+def test_quick_check_empty_board():
+    r = BulletinFlow().quick_check("cb,,news", deps())
+    assert r.replies == ["No bulletins available on News board."]
+    assert r.keep_state
+
+
+def test_quick_check_lists_and_awaits_a_number():
+    store = FakeStore(bulletins={"Info": [(7, "Subj", "AA", "2026-07-08", "u")]})
+    r = BulletinFlow().quick_check("cb,,info", deps(store))
+    assert "📰 Bulletins on Info board:" in r.replies[0]
+    assert "[01] Subject: Subj" in r.replies[0]
+    assert r.next_state["command"] == "CHECK_BULLETIN"
+
+
+# --- CHECK_BULLETIN numbered read -----------------------------------------
+
+def test_check_bulletin_read_valid():
+    store = FakeStore(content={7: ("AA", "2026-07-08", "Subj", "Body", "u")})
+    state = st("CHECK_BULLETIN", step=1, bulletins=[(7, "Subj", "AA", "d", "u")])
+    r = BulletinFlow().advance("1", state, deps(store))
+    assert "From: AA" in r.replies[0]
+    assert "Body" in r.replies[0]
+    assert r.next_state is None
+
+
+def test_check_bulletin_read_out_of_range():
+    state = st("CHECK_BULLETIN", step=1, bulletins=[(7, "Subj", "AA", "d", "u")])
+    r = BulletinFlow().advance("9", state, deps())
+    assert "Invalid bulletin number" in r.replies[0]
+    assert r.next_state == state
+
+
+def test_check_bulletin_read_non_numeric():
+    state = st("CHECK_BULLETIN", step=1, bulletins=[(7, "Subj", "AA", "d", "u")])
+    r = BulletinFlow().advance("abc", state, deps())
+    assert "Invalid input" in r.replies[0]
 
 
 if __name__ == "__main__":

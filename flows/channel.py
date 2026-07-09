@@ -14,12 +14,47 @@ CHANNEL_MENU = ("📚CHANNEL DIRECTORY📚\nWhat would you like to do?\n"
                 "[V]iew  [P]ost  E[X]IT")
 
 
+POST_USAGE = "Post Channel Quick Command format:\nCHP,,{channel_name},,{channel_url}"
+
+
 class ChannelFlow:
     TOPICS = ["CHANNEL_DIRECTORY", "LIST_CHANNELS", "CHECK_CHANNEL"]
+    QUICK_COMMANDS = {"chp,,": "quick_post", "chl": "quick_list"}
 
     def entry(self, deps):
         return FlowResult(replies=[CHANNEL_MENU],
                           next_state={"command": "CHANNEL_DIRECTORY", "step": 1})
+
+    # --- quick commands ---------------------------------------------------
+
+    def quick_post(self, message, deps):
+        """CHP,,{name},,{url} — add a channel without stepping.
+
+        The old parser split on "|" while its own usage text promised ",,",
+        so this command could never succeed.
+        """
+        parts = message.split(",,", 2)
+        if len(parts) != 3 or not parts[1].strip() or not parts[2].strip():
+            return FlowResult(replies=[POST_USAGE], keep_state=True)
+
+        _, name, url = parts
+        deps.store.add_channel(name, url)
+        return FlowResult(replies=[f"Channel '{name}' has been added to the directory."],
+                          keep_state=True)
+
+    def quick_list(self, message, deps):
+        """CHL — list channels and wait for a number."""
+        channels = deps.store.get_channels()
+        if not channels:
+            return FlowResult(replies=["No channels available in the directory."],
+                              keep_state=True)
+        listing = "Available Channels:\n"
+        for i, channel in enumerate(channels):
+            listing += f"{i + 1:02d}. Name: {channel[0]}\n"
+        listing += "\nPlease reply with the number of the channel you want to view."
+        return FlowResult(replies=[listing],
+                          next_state={"command": "LIST_CHANNELS", "step": 1,
+                                      "channels": channels})
 
     def advance(self, message, state, deps):
         command = state.get("command")

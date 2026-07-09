@@ -4,6 +4,7 @@ Owns the map from a conversation topic to the flow that runs it, and drives one
 step of that flow. Its interface is small:
 
     session.handles(command)                  -> bool
+    session.quick(message, deps)              -> FlowResult | None
     session.advance(command, message, state, deps) -> FlowResult
     session.show(menu_name, deps)             -> FlowResult   (a menu)
     session.enter(topic, deps)                -> FlowResult   (a flow's opening)
@@ -40,8 +41,24 @@ class Session:
                 self._flows[topic] = flow
         self._navigation = next((f for f in flows if isinstance(f, NavigationFlow)), None)
 
+        self._quick = {}
+        for flow in flows:
+            for prefix, method in getattr(flow, "QUICK_COMMANDS", {}).items():
+                self._quick[prefix] = (flow, method)
+        # Longest prefix wins, so "chp,," is never shadowed by a shorter one.
+        self._quick_prefixes = sorted(self._quick, key=len, reverse=True)
+
     def handles(self, command):
         return command in self._flows
+
+    def quick(self, message, deps):
+        """Run a quick command if this message is one, else return None."""
+        lowered = message.lower().strip()
+        for prefix in self._quick_prefixes:
+            if lowered.startswith(prefix):
+                flow, method = self._quick[prefix]
+                return getattr(flow, method)(message.strip(), deps)
+        return None
 
     def advance(self, command, message, state, deps):
         return self._flows[command].advance(message, state, deps)

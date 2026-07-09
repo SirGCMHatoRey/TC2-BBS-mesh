@@ -23,11 +23,58 @@ def _collapse(message):
     return message
 
 
+SEND_USAGE = "Send Mail Quick Command format:\nSM,,{short_name},,{subject},,{message}"
+
+
 class MailFlow:
     TOPICS = ["MAIL", "CHECK_MAIL"]
+    QUICK_COMMANDS = {"sm,,": "quick_send", "cm": "quick_check"}
 
     def entry(self, deps):
         return FlowResult(replies=[MAIL_MENU], next_state={"command": "MAIL", "step": 1})
+
+    # --- quick commands ---------------------------------------------------
+
+    def quick_send(self, message, deps):
+        """SM,,{short_name},,{subject},,{message} — send without stepping."""
+        parts = message.split(",,", 3)
+        if len(parts) != 4:
+            return FlowResult(replies=[SEND_USAGE], keep_state=True)
+
+        _, short_name, subject, content = parts
+        nodes = deps.lookup.node_info(short_name.lower())
+        if not nodes:
+            return FlowResult(replies=[f"Node with short name '{short_name}' not found."],
+                              keep_state=True)
+        if len(nodes) > 1:
+            return FlowResult(
+                replies=[f"Multiple nodes with short name '{short_name}' found. "
+                         f"Please be more specific."],
+                keep_state=True)
+
+        recipient_id = nodes[0]["num"]
+        recipient_name = deps.lookup.node_name(recipient_id)
+        sender_short_name = deps.lookup.short_name(deps.node_id)
+        deps.store.add_mail(deps.node_id, sender_short_name, recipient_id, subject, content)
+
+        notification = (f"You have a new mail message from {sender_short_name}. "
+                        f"Check your mailbox by responding to this message with CM.")
+        return FlowResult(replies=[f"Mail has been sent to {recipient_name}."],
+                          notifications=[(recipient_id, notification)],
+                          keep_state=True)
+
+    def quick_check(self, message, deps):
+        """CM — list the mailbox and wait for a number."""
+        mail = deps.store.get_mail(deps.node_id)
+        if not mail:
+            return FlowResult(replies=["You have no new messages."], keep_state=True)
+
+        listing = "📬 You have the following messages:\n"
+        for i, msg in enumerate(mail):
+            listing += f"{i + 1:02d}. From: {msg[1]}, Subject: {msg[2]}\n"
+        listing += "\nPlease reply with the number of the message you want to read."
+        return FlowResult(replies=[listing],
+                          next_state={"command": "CHECK_MAIL", "step": 1, "mail": mail})
 
     def advance(self, message, state, deps):
         command = state.get("command")

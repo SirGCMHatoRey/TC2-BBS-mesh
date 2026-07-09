@@ -233,6 +233,63 @@ def test_check_confirm_reply_switches_to_mail_compose():
     assert r.next_state["reply_to_mail_id"] == 5
 
 
+# --- SM,, quick send -------------------------------------------------------
+
+def test_quick_send_usage_on_bad_format():
+    r = MailFlow().quick_send("sm,,foo", deps())
+    assert "Send Mail Quick Command format" in r.replies[0]
+    assert r.keep_state
+
+
+def test_quick_send_unknown_node():
+    r = MailFlow().quick_send("sm,,zzz,,Subj,,Body", deps())
+    assert r.replies == ["Node with short name 'zzz' not found."]
+    assert r.keep_state
+
+
+def test_quick_send_ambiguous_short_name():
+    lookup = FakeLookup(nodes={"bob": [{"num": "!b1", "longName": "B1"},
+                                       {"num": "!b2", "longName": "B2"}]})
+    r = MailFlow().quick_send("sm,,bob,,Subj,,Body", deps(lookup=lookup))
+    assert "Please be more specific" in r.replies[0]
+
+
+def test_quick_send_delivers_and_notifies():
+    store = FakeStore()
+    lookup = FakeLookup(nodes={"bob": [{"num": "!bob", "longName": "Bob Node"}]},
+                        names={"!bob": "Bob Node"}, shorts={"!me": "ME"})
+    r = MailFlow().quick_send("sm,,bob,,Subj,,Body text", deps(store, lookup))
+    assert store.added == [("!me", "ME", "!bob", "Subj", "Body text")]
+    assert r.replies == ["Mail has been sent to Bob Node."]
+    assert r.notifications[0][0] == "!bob"
+    assert r.keep_state
+
+
+def test_quick_send_keeps_content_with_commas():
+    store = FakeStore()
+    lookup = FakeLookup(nodes={"bob": [{"num": "!bob", "longName": "Bob"}]},
+                        names={"!bob": "Bob"}, shorts={"!me": "ME"})
+    MailFlow().quick_send("sm,,bob,,Subj,,a,,b,,c", deps(store, lookup))
+    assert store.added[0][4] == "a,,b,,c"     # only the first 3 separators split
+
+
+# --- CM quick check --------------------------------------------------------
+
+def test_quick_check_empty_mailbox():
+    r = MailFlow().quick_check("cm", deps())
+    assert r.replies == ["You have no new messages."]
+    assert r.keep_state
+
+
+def test_quick_check_lists_and_awaits_a_number():
+    store = FakeStore(mail=[(5, "AA", "Hello", "2026-07-08", "u5")])
+    r = MailFlow().quick_check("cm", deps(store))
+    assert "📬 You have the following messages:" in r.replies[0]
+    assert "01. From: AA, Subject: Hello" in r.replies[0]
+    assert r.next_state == {"command": "CHECK_MAIL", "step": 1,
+                            "mail": [(5, "AA", "Hello", "2026-07-08", "u5")]}
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0
