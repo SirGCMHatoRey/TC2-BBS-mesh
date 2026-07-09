@@ -14,6 +14,9 @@ inside the store for now (candidate 02 will lift them out).
 import board as boards
 from flows.base import FlowResult, GOTO_MAIN, GOTO_BBS
 
+BULLETIN_MENU = ("📰Bulletin Menu📰\nWhich board would you like to enter?\n"
+                 "[G]eneral  [I]nfo  [N]ews  [U]rgent")
+
 _LETTER_TO_BOARD = {
     "g": boards.GENERAL,
     "i": boards.INFO,
@@ -30,6 +33,10 @@ class BulletinFlow:
         "BULLETIN_POST",
         "BULLETIN_POST_CONTENT",
     ]
+
+    def entry(self, deps):
+        return FlowResult(replies=[BULLETIN_MENU],
+                          next_state={"command": "BULLETIN_MENU", "step": 1})
 
     def advance(self, message, state, deps):
         command = state.get("command")

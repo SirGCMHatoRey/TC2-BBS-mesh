@@ -23,6 +23,10 @@ _TIMEFRAMES = {
 class StatsFlow:
     TOPIC = "STATS"
 
+    def entry(self, deps):
+        """Greeting and starting state when Navigation hands the topic over."""
+        return FlowResult(replies=[_MENU], next_state={"command": self.TOPIC, "step": 1})
+
     def advance(self, message, state, deps):
         message = message.lower().strip()
         if len(message) == 2 and message[1] == "x":

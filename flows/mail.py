@@ -26,6 +26,9 @@ def _collapse(message):
 class MailFlow:
     TOPICS = ["MAIL", "CHECK_MAIL"]
 
+    def entry(self, deps):
+        return FlowResult(replies=[MAIL_MENU], next_state={"command": "MAIL", "step": 1})
+
     def advance(self, message, state, deps):
         command = state.get("command")
         step = state.get("step")

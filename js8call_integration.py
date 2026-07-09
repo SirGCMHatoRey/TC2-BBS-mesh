@@ -7,7 +7,6 @@ import logging
 
 from meshtastic import BROADCAST_NUM
 
-from command_handlers import handle_help_command
 from utils import send_message, update_user_state
 
 config_file = 'config.ini'
@@ -213,9 +212,10 @@ class JS8CallClient:
         self.connected = False
 
 
-def handle_js8call_command(sender_id, interface):
-    response = "JS8Call Menu:\n[G]roup Messages\n[S]tation Messages\n[U]rgent Messages\nE[X]IT"
-    send_message(response, sender_id, interface)
+def _show_js8call_menu(sender_id, interface):
+    """Re-show the JS8Call menu. NavigationFlow renders the first one."""
+    from flows.navigation import JS8_MENU
+    send_message(JS8_MENU, sender_id, interface)
     update_user_state(sender_id, {'command': 'JS8CALL_MENU', 'step': 1})
 
 
@@ -226,10 +226,8 @@ def handle_js8call_steps(sender_id, message, step, interface, state):
 
     if step == 1:
         choice = message
-        if choice == 'x':
-            handle_help_command(sender_id, interface, 'bbs')
-            return
-        elif choice == 'g':
+        # 'x' never arrives here: the router returns to the main menu first.
+        if choice == 'g':
             handle_group_messages_command(sender_id, interface)
         elif choice == 's':
             handle_station_messages_command(sender_id, interface)
@@ -237,7 +235,7 @@ def handle_js8call_steps(sender_id, message, step, interface, state):
             handle_urgent_messages_command(sender_id, interface)
         else:
             send_message("Invalid option. Please choose again.", sender_id, interface)
-            handle_js8call_command(sender_id, interface)
+            _show_js8call_menu(sender_id, interface)
 
 
 
@@ -252,7 +250,7 @@ def handle_group_messages_command(sender_id, interface):
         update_user_state(sender_id, {'command': 'GROUP_MESSAGES', 'step': 1, 'groups': groups})
     else:
         send_message("No group messages available.", sender_id, interface)
-        handle_js8call_command(sender_id, interface)
+        _show_js8call_menu(sender_id, interface)
 
 def handle_station_messages_command(sender_id, interface):
     conn = sqlite3.connect('js8call.db')
@@ -264,7 +262,7 @@ def handle_station_messages_command(sender_id, interface):
         send_message(response, sender_id, interface)
     else:
         send_message("No station messages available.", sender_id, interface)
-    handle_js8call_command(sender_id, interface)
+    _show_js8call_menu(sender_id, interface)
 
 def handle_urgent_messages_command(sender_id, interface):
     conn = sqlite3.connect('js8call.db')
@@ -276,7 +274,7 @@ def handle_urgent_messages_command(sender_id, interface):
         send_message(response, sender_id, interface)
     else:
         send_message("No urgent messages available.", sender_id, interface)
-    handle_js8call_command(sender_id, interface)
+    _show_js8call_menu(sender_id, interface)
 
 def handle_group_message_selection(sender_id, message, step, state, interface):
     groups = state['groups']
@@ -298,4 +296,4 @@ def handle_group_message_selection(sender_id, message, step, state, interface):
         send_message("Invalid group selection. Please choose again.", sender_id, interface)
         handle_group_messages_command(sender_id, interface)
 
-    handle_js8call_command(sender_id, interface)
+    _show_js8call_menu(sender_id, interface)

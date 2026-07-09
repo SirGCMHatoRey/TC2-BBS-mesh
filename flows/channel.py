@@ -17,6 +17,10 @@ CHANNEL_MENU = ("📚CHANNEL DIRECTORY📚\nWhat would you like to do?\n"
 class ChannelFlow:
     TOPICS = ["CHANNEL_DIRECTORY", "LIST_CHANNELS", "CHECK_CHANNEL"]
 
+    def entry(self, deps):
+        return FlowResult(replies=[CHANNEL_MENU],
+                          next_state={"command": "CHANNEL_DIRECTORY", "step": 1})
+
     def advance(self, message, state, deps):
         command = state.get("command")
         if command in ("LIST_CHANNELS", "CHECK_CHANNEL"):

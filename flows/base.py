@@ -30,6 +30,8 @@ class Deps:
     node_num: Any = None                         # acting node's mesh number (the sender)
     node_id: Any = None                          # acting node's id, resolved from the roster
     allowed_nodes: List[str] = field(default_factory=list)   # urgent-board allow-list
+    menus: Any = None                            # settings.Menus — which letters each menu offers
+    fortunes: List[str] = field(default_factory=list)
 
 
 # Menu hand-off targets. A flow names where the conversation should return to;
@@ -54,6 +56,10 @@ class FlowResult:
     replies: List[str] = field(default_factory=list)
     next_state: Optional[dict] = None
     goto: Optional[str] = None
+    #: Hand the conversation to another Flow, named by one of its topics. The
+    #: router asks that Flow for its entry — its greeting and starting state —
+    #: so each Flow owns its own opening rather than Navigation knowing them all.
+    enter: Optional[str] = None
     #: Out-of-band messages to nodes other than the sender, as (destination,
     #: text) pairs — e.g. the "you have new mail" nudge to a recipient. The
     #: router sends these after the replies. This is the cross-node messaging

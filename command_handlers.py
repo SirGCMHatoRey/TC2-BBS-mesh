@@ -1,9 +1,9 @@
-import configparser
-import logging
-import random
-import time
+"""Quick commands: the shorthands that act in one message.
 
-from meshtastic import BROADCAST_NUM
+Everything stepped now lives in a Flow behind the Session seam.
+"""
+
+import logging
 
 from adapters import Store
 from db_operations import (
@@ -16,118 +16,12 @@ from utils import (
     update_user_state
 )
 
-# Read the configuration for menu options
-config = configparser.ConfigParser()
-config.read('config.ini')
-
-main_menu_items = config['menu']['main_menu_items'].split(',')
-bbs_menu_items = config['menu']['bbs_menu_items'].split(',')
-utilities_menu_items = config['menu']['utilities_menu_items'].split(',')
-
-
-def build_menu(items, menu_name):
-    menu_str = f"{menu_name}\n"
-    for item in items:
-        if item.strip() == 'Q':
-            menu_str += "[Q]uick Commands\n"
-        elif item.strip() == 'B':
-            if menu_name == "📰BBS Menu📰":
-                menu_str += "[B]ulletins\n"
-            else:
-                menu_str += "[B]BS\n"
-        elif item.strip() == 'U':
-            menu_str += "[U]tilities\n"
-        elif item.strip() == 'X':
-            menu_str += "E[X]IT\n"
-        elif item.strip() == 'M':
-            menu_str += "[M]ail\n"
-        elif item.strip() == 'C':
-            menu_str += "[C]hannel Dir\n"
-        elif item.strip() == 'J':
-            menu_str += "[J]S8CALL\n"
-        elif item.strip() == 'S':
-            menu_str += "[S]tats\n"
-        elif item.strip() == 'F':
-            menu_str += "[F]ortune\n"
-        elif item.strip() == 'W':
-            menu_str += "[W]all of Shame\n"
-    return menu_str
-
-def handle_help_command(sender_id, interface, menu_name=None):
-    if menu_name:
-        update_user_state(sender_id, {'command': 'MENU', 'menu': menu_name, 'step': 1})
-        if menu_name == 'bbs':
-            response = build_menu(bbs_menu_items, "📰BBS Menu📰")
-        elif menu_name == 'utilities':
-            response = build_menu(utilities_menu_items, "🛠️Utilities Menu🛠️")
-    else:
-        update_user_state(sender_id, {'command': 'MAIN_MENU', 'step': 1})  # Reset to main menu state
-        mail = get_mail(get_node_id_from_num(sender_id, interface))
-        response = build_menu(main_menu_items, f"💾TC² BBS💾 (✉️:{len(mail)})")
-    send_message(response, sender_id, interface)
 
 def get_node_name(node_id, interface):
     node_info = interface.nodes.get(node_id)
     if node_info:
         return node_info['user']['longName']
     return f"Node {node_id}"
-
-
-def handle_mail_command(sender_id, interface):
-    response = "✉️Mail Menu✉️\nWhat would you like to do with mail?\n[R]ead  [S]end E[X]IT"
-    send_message(response, sender_id, interface)
-    update_user_state(sender_id, {'command': 'MAIL', 'step': 1})
-
-
-
-def handle_bulletin_command(sender_id, interface):
-    response = f"📰Bulletin Menu📰\nWhich board would you like to enter?\n[G]eneral  [I]nfo  [N]ews  [U]rgent"
-    send_message(response, sender_id, interface)
-    update_user_state(sender_id, {'command': 'BULLETIN_MENU', 'step': 1})
-
-
-def handle_exit_command(sender_id, interface):
-    send_message("Type 'HELP' for a list of commands.", sender_id, interface)
-    update_user_state(sender_id, None)
-
-
-def handle_stats_command(sender_id, interface):
-    response = "📊Stats Menu📊\nWhat stats would you like to view?\n[N]odes  [H]ardware  [R]oles  E[X]IT"
-    send_message(response, sender_id, interface)
-    update_user_state(sender_id, {'command': 'STATS', 'step': 1})
-
-
-def handle_fortune_command(sender_id, interface):
-    try:
-        with open('fortunes.txt', 'r') as file:
-            fortunes = file.readlines()
-        if not fortunes:
-            send_message("No fortunes available.", sender_id, interface)
-            return
-        fortune = random.choice(fortunes).strip()
-        decorated_fortune = f"🔮 {fortune} 🔮"
-        send_message(decorated_fortune, sender_id, interface)
-    except Exception as e:
-        send_message(f"Error generating fortune: {e}", sender_id, interface)
-
-
-def handle_wall_of_shame_command(sender_id, interface):
-    response = "Devices with battery levels below 20%:\n"
-    for node_id, node in interface.nodes.items():
-        metrics = node.get('deviceMetrics', {})
-        battery_level = metrics.get('batteryLevel', 101)
-        if battery_level < 20:
-            long_name = node['user']['longName']
-            response += f"{long_name} - Battery {battery_level}%\n"
-    if response == "Devices with battery levels below 20%:\n":
-        response = "No devices with battery levels below 20% found."
-    send_message(response, sender_id, interface)
-
-
-def handle_channel_directory_command(sender_id, interface):
-    response = "📚CHANNEL DIRECTORY📚\nWhat would you like to do?\n[V]iew  [P]ost  E[X]IT"
-    send_message(response, sender_id, interface)
-    update_user_state(sender_id, {'command': 'CHANNEL_DIRECTORY', 'step': 1})
 
 
 def handle_send_mail_command(sender_id, message, interface, bbs_nodes):
@@ -289,9 +183,3 @@ def handle_list_channels_command(sender_id, interface):
     except Exception as e:
         logging.error(f"Error processing list channels command: {e}")
         send_message("Error processing list channels command.", sender_id, interface)
-
-
-def handle_quick_help_command(sender_id, interface):
-    response = ("✈️QUICK COMMANDS✈️\nSend command below for usage info:\nSM,, - Send "
-                "Mail\nCM - Check Mail\nPB,, - Post Bulletin\nCB,, - Check Bulletins\n")
-    send_message(response, sender_id, interface)

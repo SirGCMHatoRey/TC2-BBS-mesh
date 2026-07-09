@@ -231,6 +231,79 @@ A video of it in use is available on our YouTube channel:
 
 [![TC²-BBS-Mesh](https://img.youtube.com/vi/d6LhY4HoimU/0.jpg)](https://www.youtube.com/watch?v=d6LhY4HoimU)
 
+## Conversation map
+
+Every conversation starts at the main menu. Selecting a letter either **enters a
+flow** (a multi-step conversation like Mail or Bulletins) or triggers a **leaf**
+(a one-shot reply that leaves you where you are). Sending `X` from anywhere
+returns you to the main menu.
+
+```mermaid
+flowchart TD
+    MSG([Any direct message]) --> MAIN
+
+    MAIN["💾 TC² BBS<br/><sub>main menu</sub>"]
+    BBS["📰 BBS Menu"]
+    UTIL["🛠️ Utilities Menu"]
+
+    MAIN -->|B| BBS
+    MAIN -->|U| UTIL
+    MAIN -->|Q| QUICK["Quick Commands help"]
+
+    BBS -->|M| MAIL["✉️ Mail"]
+    BBS -->|B| BUL["📰 Bulletins"]
+    BBS -->|C| CHAN["📚 Channel Directory"]
+    BBS -->|J| JS8["📻 JS8Call"]
+
+    UTIL -->|S| STATS["📊 Stats"]
+    UTIL -->|F| FORT["🔮 Fortune"]
+    UTIL -->|W| WALL["🪫 Wall of Shame"]
+
+    QUICK -.-> MAIN
+    FORT -.-> UTIL
+    WALL -.-> UTIL
+
+    MAIL -.->|X| MAIN
+    BUL -.->|X| MAIN
+    CHAN -.->|X| MAIN
+    JS8 -.->|X| MAIN
+    STATS -.->|X| MAIN
+
+    classDef flow fill:#1e293b,color:#e0e7ff,stroke:#334155;
+    classDef leaf fill:#fef3c7,color:#78350f,stroke:#d97706;
+    classDef menu fill:#e0e7ff,color:#1e293b,stroke:#6366f1;
+    class MAIL,BUL,CHAN,STATS,JS8 flow
+    class QUICK,FORT,WALL leaf
+    class MAIN,BBS,UTIL menu
+```
+
+Solid arrows move you somewhere; dashed arrows return you. Dark boxes are flows,
+amber boxes are leaves, and light boxes are menus.
+
+Which letters each menu offers is configurable — see `[menu]` in `config.ini`.
+Removing a letter there removes it from the menu.
+
+### Quick commands
+
+Quick commands skip the menus entirely and can be sent at any time:
+
+| Command | Does |
+| --- | --- |
+| `SM,,{short_name},,{subject},,{message}` | Send mail |
+| `CM` | Check mail |
+| `PB,,{board},,{subject},,{content}` | Post a bulletin |
+| `CB,,{board}` | Check bulletins on a board |
+| `CHP,,{name},,{url}` | Post a channel to the directory |
+| `CHL` | List channels |
+
+### For contributors
+
+Each conversation topic is a **Flow** — a pure module that, given a message and
+the current state, returns what to reply and where the conversation goes next.
+A **Session** dispatches to the flow that owns the current topic. The domain
+vocabulary lives in [CONTEXT.md](CONTEXT.md), and the reasoning behind this
+shape is recorded in [docs/adr/](docs/adr/).
+
 ## Thanks
 
 **Meshtastic:**

@@ -1,76 +1,65 @@
 import logging
 
 from command_handlers import (
-    handle_mail_command, handle_bulletin_command, handle_help_command, handle_stats_command, handle_fortune_command,
-    handle_wall_of_shame_command,
-    handle_channel_directory_command, handle_send_mail_command,
-    handle_check_mail_command, handle_post_bulletin_command,
+    handle_send_mail_command, handle_check_mail_command, handle_post_bulletin_command,
     handle_check_bulletin_command, handle_read_bulletin_command,
-    handle_post_channel_command, handle_list_channels_command, handle_quick_help_command
+    handle_post_channel_command, handle_list_channels_command,
 )
-from js8call_integration import handle_js8call_command, handle_js8call_steps, handle_group_message_selection
+from js8call_integration import handle_js8call_steps, handle_group_message_selection
 from utils import get_user_state, get_node_short_name, get_node_id_from_num, send_message, update_user_state
 from session import Session
-from flows.base import Deps, GOTO_MAIN, GOTO_BBS, GOTO_UTILITIES
+from flows.base import Deps, GOTO_MAIN
 from adapters import Store, Lookup
 from events import Origin
 import replication
+import settings
 
 # Deep dispatcher for migrated conversation topics. Topics not yet registered
-# fall through to the legacy handle_*_steps path below.
+# (JS8Call, the CB,, bulletin read) fall through to the legacy path below.
 _SESSION = Session()
 
-# Menu the router shows when a flow hands the conversation back. Resolved
-# against the legacy help command until NavigationFlow owns menus.
-_GOTO_MENU = {GOTO_MAIN: None, GOTO_BBS: "bbs", GOTO_UTILITIES: "utilities"}
 
-
-def _dispatch_session(sender_id, command, message, state, interface):
-    """Run one step of a migrated flow and enact its result at the seam.
-
-    The flow is pure — it returns replies and where to go next. Sending, state
-    storage, and the menu hand-off happen here, not inside the flow.
-    """
-    deps = Deps(
+def _build_deps(sender_id, interface):
+    return Deps(
         roster=interface.nodes,
         store=Store(interface),
         lookup=Lookup(interface),
         node_num=sender_id,
         node_id=get_node_id_from_num(sender_id, interface),
         allowed_nodes=getattr(interface, "allowed_nodes", []),
+        menus=settings.menus(),
+        fortunes=settings.fortunes(),
     )
-    result = _SESSION.advance(command, message, state, deps)
+
+
+def _enact(sender_id, result, deps, interface):
+    """Send what a flow produced and store where the conversation now stands.
+
+    A flow returns replies plus at most one hand-off: `goto` asks for a menu,
+    `enter` hands the conversation to another flow. Both are resolved through
+    the Session, so menus and openings each have exactly one owner.
+    """
     for reply in result.replies:
         send_message(reply, sender_id, interface)
     for destination, text in result.notifications:
         send_message(text, destination, interface)
+
     if result.goto is not None:
-        handle_help_command(sender_id, interface, _GOTO_MENU[result.goto])
+        handed_off = _SESSION.show(result.goto, deps)
+    elif result.enter is not None:
+        handed_off = _SESSION.enter(result.enter, deps)
     else:
         update_user_state(sender_id, result.next_state)
+        return
 
-main_menu_handlers = {
-    "q": handle_quick_help_command,
-    "b": lambda sender_id, interface: handle_help_command(sender_id, interface, 'bbs'),
-    "u": lambda sender_id, interface: handle_help_command(sender_id, interface, 'utilities'),
-    "x": handle_help_command
-}
-
-bbs_menu_handlers = {
-    "m": handle_mail_command,
-    "b": handle_bulletin_command,
-    "c": handle_channel_directory_command,
-    "j": handle_js8call_command,
-    "x": handle_help_command
-}
+    for reply in handed_off.replies:
+        send_message(reply, sender_id, interface)
+    update_user_state(sender_id, handed_off.next_state)
 
 
-utilities_menu_handlers = {
-    "s": handle_stats_command,
-    "f": handle_fortune_command,
-    "w": handle_wall_of_shame_command,
-    "x": handle_help_command
-}
+def _show_main_menu(sender_id, interface):
+    deps = _build_deps(sender_id, interface)
+    _enact(sender_id, _SESSION.show(GOTO_MAIN, deps), deps, interface)
 
 
 def process_message(sender_id, message, interface, is_sync_message=False):
@@ -93,67 +82,50 @@ def process_message(sender_id, message, interface, is_sync_message=False):
             return
         Store(interface).accept(event)
         replication.Replication(interface).publish(event, Origin.SYNCED)
+        return
+
+    if message_lower.startswith("sm,,"):
+        handle_send_mail_command(sender_id, message_strip, interface, bbs_nodes)
+        return
+    if message_lower.startswith("cm"):
+        handle_check_mail_command(sender_id, interface)
+        return
+    if message_lower.startswith("pb,,"):
+        handle_post_bulletin_command(sender_id, message_strip, interface, bbs_nodes)
+        return
+    if message_lower.startswith("cb,,"):
+        handle_check_bulletin_command(sender_id, message_strip, interface)
+        return
+    if message_lower.startswith("chp,,"):
+        handle_post_channel_command(sender_id, message_strip, interface)
+        return
+    if message_lower.startswith("chl"):
+        handle_list_channels_command(sender_id, interface)
+        return
+
+    # EXIT from anywhere returns to the main menu, before any flow sees it.
+    if message_lower == 'x':
+        _show_main_menu(sender_id, interface)
+        return
+
+    # No state means the conversation is sitting at the main menu.
+    topic = state['command'] if state else 'MAIN_MENU'
+
+    if _SESSION.handles(topic):
+        deps = _build_deps(sender_id, interface)
+        result = _SESSION.advance(topic, message, state or {'command': 'MAIN_MENU', 'step': 1}, deps)
+        _enact(sender_id, result, deps, interface)
+        return
+
+    # Not yet migrated.
+    if topic == 'JS8CALL_MENU':
+        handle_js8call_steps(sender_id, message, state['step'], interface, state)
+    elif topic == 'GROUP_MESSAGES':
+        handle_group_message_selection(sender_id, message, state['step'], state, interface)
+    elif topic == 'CHECK_BULLETIN' and state['step'] == 1:
+        handle_read_bulletin_command(sender_id, message, state, interface)
     else:
-        if message_lower.startswith("sm,,"):
-            handle_send_mail_command(sender_id, message_strip, interface, bbs_nodes)
-        elif message_lower.startswith("cm"):
-            handle_check_mail_command(sender_id, interface)
-        elif message_lower.startswith("pb,,"):
-            handle_post_bulletin_command(sender_id, message_strip, interface, bbs_nodes)
-        elif message_lower.startswith("cb,,"):
-            handle_check_bulletin_command(sender_id, message_strip, interface)
-        elif message_lower.startswith("chp,,"):
-            handle_post_channel_command(sender_id, message_strip, interface)
-        elif message_lower.startswith("chl"):
-            handle_list_channels_command(sender_id, interface)
-        else:
-            if state and state['command'] == 'MENU':
-                menu_name = state['menu']
-                if menu_name == 'bbs':
-                    handlers = bbs_menu_handlers
-                elif menu_name == 'utilities':
-                    handlers = utilities_menu_handlers
-                else:
-                    handlers = main_menu_handlers
-            elif state and state['command'] == 'JS8CALL_MENU':
-                handle_js8call_steps(sender_id, message, state['step'], interface, state)
-                return
-            elif state and state['command'] == 'GROUP_MESSAGES':
-                handle_group_message_selection(sender_id, message, state['step'], state, interface)
-                return
-            else:
-                handlers = main_menu_handlers
-
-            if message_lower == 'x':
-                # Reset to main menu state
-                handle_help_command(sender_id, interface)
-                return
-
-            # Migrated topics are owned entirely by the Session seam, across
-            # both the menu-dict and stepped dispatch paths below.
-            if state and _SESSION.handles(state['command']):
-                _dispatch_session(sender_id, state['command'], message, state, interface)
-                return
-
-            if message_lower in handlers:
-                handlers[message_lower](sender_id, interface)
-            elif state:
-                command = state['command']
-                step = state['step']
-
-                # Mail, Bulletins, Stats and Channels are owned by the Session seam
-                # (handled above). What remains here is not yet migrated.
-                if command == 'CHECK_BULLETIN':
-                    if step == 1:
-                        handle_read_bulletin_command(sender_id, message, state, interface)
-                elif command == 'JS8CALL_MENU':
-                    handle_js8call_steps(sender_id, message, step, interface, state)
-                elif command == 'GROUP_MESSAGES':
-                    handle_group_message_selection(sender_id, message, step, state, interface)
-                else:
-                    handle_help_command(sender_id, interface)
-            else:
-                handle_help_command(sender_id, interface)
+        _show_main_menu(sender_id, interface)
 
 
 def on_receive(packet, interface):

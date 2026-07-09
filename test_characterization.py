@@ -15,22 +15,27 @@ pytest, or standalone (``python test_characterization.py``).
 
 import contextlib
 import io
-import os
-import shutil
 import sqlite3
 import types
-
-# command_handlers reads config.ini at import time, so it must exist first.
-if not os.path.exists("config.ini"):
-    shutil.copy("example_config.ini", "config.ini")
 
 import utils
 import db_operations
 import message_processing
+import settings
+from settings import Menus
 
 # The real send_message sleeps 2s per chunk to pace the radio. Neutralize it
 # or the suite is unusably slow; characterization runs at the message seam.
 utils.time.sleep = lambda *a, **k: None
+
+# Menus and fortunes are injected, so the suite never reads config.ini or
+# fortunes.txt. Nothing reads the filesystem at import any more.
+settings.configure(
+    menus=Menus(main=["Q", "B", "U", "X"],
+                bbs=["M", "B", "C", "J", "X"],
+                utilities=["S", "F", "W", "X"]),
+    fortunes=["Stay curious"],
+)
 
 
 # --------------------------------------------------------------------------
@@ -149,6 +154,49 @@ def test_enter_utilities_menu():
     s = new_session()
     r = joined(s.advance("u"))
     assert "🛠️Utilities Menu🛠️" in r
+
+
+def test_quick_help_leaf():
+    s = new_session()
+    r = joined(s.advance("q"))
+    assert "QUICK COMMANDS" in r
+
+
+def test_fortune_leaf():
+    s = new_session()
+    s.advance("u")
+    r = joined(s.advance("f"))
+    assert "Stay curious" in r
+
+
+def test_wall_of_shame_leaf():
+    s = new_session(extra_nodes={"!flat": make_node(3003, "FLAT", "Flat Node", battery=5)})
+    s.advance("u")
+    r = joined(s.advance("w"))
+    assert "Flat Node - Battery 5%" in r
+
+
+def test_exit_from_deep_inside_a_flow_returns_to_main():
+    s = new_session()
+    s.advance("b")            # bbs menu
+    s.advance("b")            # bulletin menu
+    s.advance("g")            # inside General board
+    r = joined(s.advance("x"))
+    assert "💾TC² BBS💾" in r
+
+
+def test_bbs_menu_enters_mail_flow():
+    s = new_session()
+    s.advance("b")
+    r = joined(s.advance("m"))
+    assert "✉️Mail Menu✉️" in r
+
+
+def test_bbs_menu_enters_js8call():
+    s = new_session()
+    s.advance("b")
+    r = joined(s.advance("j"))
+    assert "JS8Call Menu" in r
 
 
 # --------------------------------------------------------------------------
