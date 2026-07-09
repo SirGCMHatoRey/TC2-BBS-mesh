@@ -5,6 +5,13 @@ replies and next state are asserted directly. Covers board selection, read,
 post, and the urgent permission branch that consumes the Board policy flags.
 """
 
+import os
+import sys
+
+# Run from anywhere: put the repo root on the path before importing the modules
+# under test. Keeps `python tests/test_x.py` working alongside pytest.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from flows.base import Deps
 from flows.bulletin import BulletinFlow
 

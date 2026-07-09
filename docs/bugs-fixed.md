@@ -6,7 +6,7 @@ contained it — which is the argument for the refactor, not a bonus from it.
 Every entry was reproduced before being fixed, and each has a regression test.
 Behaviour changes are called out explicitly: the refactor was otherwise
 behaviour-preserving, guarded by the characterization suite in
-`test_characterization.py`.
+`tests/test_characterization.py`.
 
 ---
 
@@ -31,8 +31,8 @@ never inherited it.
 
 **Fix:** both paths now go through one `_may_post()` in `flows/bulletin.py`.
 
-Commit `6257db4`. Tests: `test_bulletin_flow.py::test_quick_post_to_urgent_respects_the_allow_list`,
-`test_characterization.py::test_quick_post_bulletin_to_urgent_respects_allow_list`.
+Commit `6257db4`. Tests: `tests/test_bulletin_flow.py::test_quick_post_to_urgent_respects_the_allow_list`,
+`tests/test_characterization.py::test_quick_post_bulletin_to_urgent_respects_allow_list`.
 
 ---
 
@@ -52,7 +52,7 @@ string test.
 
 **Behaviour change:** one broadcast instead of two.
 
-Commit `4fb33ef`. Test: `test_characterization.py::test_synced_urgent_bulletin_broadcasts_once`.
+Commit `4fb33ef`. Test: `tests/test_characterization.py::test_synced_urgent_bulletin_broadcasts_once`.
 
 ---
 
@@ -75,7 +75,7 @@ peers actually share, and returns `None` when the bulletin is absent.
 
 **Behaviour change:** a replicated deletion now deletes.
 
-Commit `4fb33ef`. Test: `test_characterization.py::test_synced_bulletin_deletion_removes_it`.
+Commit `4fb33ef`. Test: `tests/test_characterization.py::test_synced_bulletin_deletion_removes_it`.
 
 ---
 
@@ -95,8 +95,8 @@ the usage. Adding a channel by quick command had never worked.
 
 **Behaviour change:** the command works.
 
-Commit `6257db4`. Tests: `test_channel_flow.py::test_quick_post_adds_channel`,
-`test_characterization.py::test_quick_post_channel_actually_works`.
+Commit `6257db4`. Tests: `tests/test_channel_flow.py::test_quick_post_adds_channel`,
+`tests/test_characterization.py::test_quick_post_channel_actually_works`.
 
 ---
 
@@ -131,7 +131,7 @@ which takes the column from a table allow-list. Both call sites use it.
 
 **Behaviour change:** the bridge stores messages.
 
-Commit `f8b0352`. Tests: `test_js8_db.py` (all), verified end-to-end against
+Commit `f8b0352`. Tests: `tests/test_js8_db.py` (all), verified end-to-end against
 `JS8CallClient.process`.
 
 ---
@@ -159,7 +159,7 @@ tables do not exist. An unconfigured bridge is an empty inbox, not an error.
 
 **Behaviour change:** "No group messages available." instead of a crash.
 
-Commit `f8b0352`. Test: `test_characterization.py::test_js8call_reads_answer_gracefully_when_unconfigured`.
+Commit `f8b0352`. Test: `tests/test_characterization.py::test_js8call_reads_answer_gracefully_when_unconfigured`.
 
 ---
 
@@ -179,7 +179,7 @@ Unreachable at the time — the function was only ever called with `'bbs'`,
 **Fix:** `NavigationFlow.show()` falls back to the main menu for any
 unrecognized name.
 
-Commit `ff0354a`. Test: `test_navigation_flow.py::test_unknown_menu_name_falls_back_to_main`.
+Commit `ff0354a`. Test: `tests/test_navigation_flow.py::test_unknown_menu_name_falls_back_to_main`.
 
 ---
 
@@ -236,7 +236,7 @@ returns; `close()` shuts the socket down — which unblocks a listener parked in
 **Behaviour change:** the server starts, serves, and shuts down cleanly with
 JS8Call enabled.
 
-Commit `e0968c2`. Tests: `test_js8_client.py::test_close_unblocks_and_joins_the_listener`,
+Commit `e0968c2`. Tests: `tests/test_js8_client.py::test_close_unblocks_and_joins_the_listener`,
 `::test_peer_hangup_stops_the_listener_without_spinning`,
 `::test_start_returns_immediately_and_listens`.
 
@@ -264,7 +264,7 @@ it.
 
 **Behaviour change:** no silent message loss.
 
-Commit `e0968c2`. Tests: `test_js8_client.py::test_two_messages_in_one_chunk`,
+Commit `e0968c2`. Tests: `tests/test_js8_client.py::test_two_messages_in_one_chunk`,
 `::test_message_split_across_chunks`, `::test_two_messages_in_one_segment_are_both_stored`.
 
 ---

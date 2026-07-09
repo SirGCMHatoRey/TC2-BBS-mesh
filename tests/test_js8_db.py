@@ -4,6 +4,13 @@ Covers the two crashes the old JS8CallClient shipped: an undefined name in the
 insert, and reads that raised when the tables did not exist.
 """
 
+import os
+import sys
+
+# Run from anywhere: put the repo root on the path before importing the modules
+# under test. Keeps `python tests/test_x.py` working alongside pytest.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from js8_db import Js8Database
 
 

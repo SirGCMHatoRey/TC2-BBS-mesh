@@ -311,6 +311,17 @@ A **Session** dispatches to the flow that owns the current topic. The domain
 vocabulary lives in [CONTEXT.md](CONTEXT.md), and the reasoning behind this
 shape is recorded in [docs/adr/](docs/adr/).
 
+Run the tests with:
+
+```sh
+python run_tests.py            # everything
+python run_tests.py mail       # only files whose name contains "mail"
+```
+
+No test framework is required. A flow is tested through its interface with a
+fake store — no radio, no database. [docs/bugs-fixed.md](docs/bugs-fixed.md)
+records the bugs this refactor surfaced and which test guards each one.
+
 ## Thanks
 
 **Meshtastic:**

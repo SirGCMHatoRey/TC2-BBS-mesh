@@ -3,6 +3,13 @@
 No database. A fake interface records what would go out over the mesh.
 """
 
+import os
+import sys
+
+# Run from anywhere: put the repo root on the path before importing the modules
+# under test. Keeps `python tests/test_x.py` working alongside pytest.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import types
 
 import utils
@@ -12,7 +19,10 @@ from events import (
 )
 from replication import Replication, decode, encode, is_sync_message
 
-utils.time.sleep = lambda *a, **k: None
+# utils does `import time; time.sleep(2)` to pace the radio. Replace the module
+# reference inside utils only -- assigning to utils.time.sleep would mutate the
+# real time module for the whole process, and other tests need a working sleep.
+utils.time = types.SimpleNamespace(sleep=lambda *a, **k: None)
 
 BROADCAST = 4294967295
 

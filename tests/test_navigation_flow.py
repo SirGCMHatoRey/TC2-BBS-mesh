@@ -1,5 +1,12 @@
 """Unit tests for NavigationFlow — pure, no config file, no interface."""
 
+import os
+import sys
+
+# Run from anywhere: put the repo root on the path before importing the modules
+# under test. Keeps `python tests/test_x.py` working alongside pytest.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from flows.base import Deps
 from flows.navigation import (
     BBS_TITLE, NavigationFlow, QUICK_HELP, UTILITIES_TITLE, build_menu,

@@ -13,6 +13,13 @@ Pure and fast — no radio, no real database, no 2-second pacing. Runs under
 pytest, or standalone (``python test_characterization.py``).
 """
 
+import os
+import sys
+
+# Run from anywhere: put the repo root on the path before importing the modules
+# under test. Keeps `python tests/test_x.py` working alongside pytest.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import contextlib
 import io
 import sqlite3
@@ -24,9 +31,10 @@ import message_processing
 import settings
 from settings import Menus
 
-# The real send_message sleeps 2s per chunk to pace the radio. Neutralize it
-# or the suite is unusably slow; characterization runs at the message seam.
-utils.time.sleep = lambda *a, **k: None
+# utils does `import time; time.sleep(2)` to pace the radio. Replace the module
+# reference inside utils only -- assigning to utils.time.sleep would mutate the
+# real time module for the whole process, and other tests need a working sleep.
+utils.time = types.SimpleNamespace(sleep=lambda *a, **k: None)
 
 # Menus and fortunes are injected, so the suite never reads config.ini or
 # fortunes.txt. Nothing reads the filesystem at import any more.

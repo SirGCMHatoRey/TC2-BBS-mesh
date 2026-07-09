@@ -5,6 +5,13 @@ bugs being guarded against — a listener that spins on EOF, dies on reset, or
 blocks the caller forever — only exist against a real socket.
 """
 
+import os
+import sys
+
+# Run from anywhere: put the repo root on the path before importing the modules
+# under test. Keeps `python tests/test_x.py` working alongside pytest.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import socket
 import threading
 import time

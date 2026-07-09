@@ -4,6 +4,13 @@ Pure — no meshtastic interface, no database. Runs under pytest, or standalone
 (``python test_board.py``) so the suite needs no new dependency.
 """
 
+import os
+import sys
+
+# Run from anywhere: put the repo root on the path before importing the modules
+# under test. Keeps `python tests/test_x.py` working alongside pytest.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import board
 from board import Board
 
