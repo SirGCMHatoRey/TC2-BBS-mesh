@@ -285,7 +285,9 @@ Removing a letter there removes it from the menu.
 
 ### Quick commands
 
-Quick commands skip the menus entirely and can be sent at any time:
+Quick commands skip the menus entirely. They can be sent at any time, and they
+leave the conversation exactly where it was — sending `CM` halfway through
+composing a bulletin answers your mailbox and leaves you still composing.
 
 | Command | Does |
 | --- | --- |
@@ -295,6 +297,11 @@ Quick commands skip the menus entirely and can be sent at any time:
 | `CB,,{board}` | Check bulletins on a board |
 | `CHP,,{name},,{url}` | Post a channel to the directory |
 | `CHL` | List channels |
+
+`{board}` must be one of General, Info, News, or Urgent. Posting to Urgent
+broadcasts a notice to the whole mesh, so it is restricted to the nodes listed
+under `[allow_list]` in `config.ini` — whether you post through the menu or
+through `PB,,`. If that section is absent, anyone may post there.
 
 ### For contributors
 
