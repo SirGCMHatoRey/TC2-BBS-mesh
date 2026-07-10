@@ -29,9 +29,14 @@ def id_from_num(nodes, num):
 
 
 def short_name(nodes, node_id):
+    """The short name, or None when the node is unknown or unnamed.
+
+    One failure mode: callers that write this down as authorship refuse the
+    write rather than storing a null author.
+    """
     node = nodes.get(node_id)
     if node:
-        return node['user']['shortName']
+        return node['user'].get('shortName')
     return None
 
 

@@ -30,6 +30,11 @@ def test_short_name():
     assert roster.short_name(NODES, "!zz") is None
 
 
+def test_short_name_of_an_unnamed_node_is_none_not_a_crash():
+    """It used to raise KeyError, a third failure mode for one question."""
+    assert roster.short_name({"!x": {"num": 9, "user": {}}}, "!x") is None
+
+
 def test_long_name_falls_back_for_a_stranger():
     assert roster.long_name(NODES, "!b") == "Bravo"
     assert roster.long_name(NODES, "!zz") == "Node !zz"

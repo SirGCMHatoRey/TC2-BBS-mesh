@@ -379,6 +379,45 @@ def test_synced_channel_is_stored_not_answered():
 
 
 # --------------------------------------------------------------------------
+# Authorship: a Node the BBS cannot name may not author a record
+# --------------------------------------------------------------------------
+
+def unknown_sender_session(bbs_nodes=()):
+    """A Node that is not in the roster -- the BBS has never heard its nodedb."""
+    s = new_session(bbs_nodes=bbs_nodes)
+    s.transport.nodes.clear()
+    return s
+
+
+def test_quick_post_by_an_unknown_node_is_refused_and_not_replicated():
+    """It used to store BULLETIN|General|None|... and sync that to every peer."""
+    s = unknown_sender_session(bbs_nodes=["!peer"])
+    r = joined(s.advance("pb,,General,,Fake,,body"))
+    assert "Unable to retrieve your node information" in r
+    assert db_operations.get_bulletins("General") == []
+    assert s.transport.sent_to("!peer") == []
+
+
+def test_quick_send_mail_by_an_unknown_node_is_refused():
+    """It used to tell the recipient 'a new mail message from None'."""
+    s = new_session(bbs_nodes=["!peer"],
+                    extra_nodes={"!bob": make_node(2002, "BOB", "Bob Node")})
+    del s.transport.nodes[SENDER_ID]          # the sender, not the recipient
+    r = joined(s.advance("sm,,bob,,Subj,,Body"))
+    assert "Unable to retrieve your node information" in r
+    assert db_operations.get_mail("!bob") == []
+    assert s.transport.sent_to("!peer") == []
+    assert s.transport.sent_to("!bob") == []
+
+
+def test_an_unknown_node_can_still_read_the_menus():
+    """Refusing authorship is not refusing the conversation."""
+    s = unknown_sender_session()
+    assert "TC² BBS" in joined(s.advance("hello"))
+    assert "No bulletins available on General board" in joined(s.advance("cb,,General"))
+
+
+# --------------------------------------------------------------------------
 # Sync (replication from a peer BBS Node)
 # --------------------------------------------------------------------------
 

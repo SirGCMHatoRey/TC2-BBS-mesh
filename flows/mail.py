@@ -10,7 +10,7 @@ The quick-command entry points (SM,, and CM) are still seeded by the legacy
 handlers; this flow owns every stepped state they lead into.
 """
 
-from flows.base import FlowResult, GOTO_MAIN
+from flows.base import FlowResult, GOTO_MAIN, UNKNOWN_NODE_REPLY
 
 MAIL_MENU = ("✉️Mail Menu✉️\nWhat would you like to do with mail?\n"
              "[R]ead  [S]end E[X]IT")
@@ -52,9 +52,12 @@ class MailFlow:
                          f"Please be more specific."],
                 keep_state=True)
 
+        sender_short_name = deps.lookup.short_name(deps.node_id)
+        if sender_short_name is None:
+            return FlowResult(replies=[UNKNOWN_NODE_REPLY], keep_state=True)
+
         recipient_id = nodes[0].id
         recipient_name = deps.lookup.node_name(recipient_id)
-        sender_short_name = deps.lookup.short_name(deps.node_id)
         deps.store.add_mail(deps.node_id, sender_short_name, recipient_id, subject, content)
 
         notification = (f"You have a new mail message from {sender_short_name}. "
@@ -187,9 +190,11 @@ class MailFlow:
             recipient_id = state.get("recipient_id")
         subject = state["subject"]
         content = state["content"]
-        recipient_name = deps.lookup.node_name(recipient_id)
         sender_short_name = deps.lookup.short_name(deps.node_id)
+        if sender_short_name is None:
+            return FlowResult(replies=[UNKNOWN_NODE_REPLY], next_state=None)
 
+        recipient_name = deps.lookup.node_name(recipient_id)
         deps.store.add_mail(deps.node_id, sender_short_name, recipient_id, subject, content)
         notification = (f"You have a new mail message from {sender_short_name}. "
                         f"Check your mailbox by responding to this message with CM.")

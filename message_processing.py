@@ -29,7 +29,6 @@ def _build_deps(sender_id, transport):
         roster=nodes,
         store=store,
         lookup=lookup,
-        node_num=sender_id,
         node_id=lookup.id_from_num(sender_id),
         allowed_nodes=settings.allowed_nodes(),
         js8=settings.js8_database(),

@@ -27,12 +27,17 @@ class Deps:
     roster: dict = field(default_factory=dict)   # node_id -> node dict (interface.nodes)
     store: Any = None                            # persistence adapter (candidate 02 seam)
     lookup: Any = None                           # node-resolution adapter (candidate 01 seam)
-    node_num: Any = None                         # acting node's mesh number (the sender)
     node_id: Any = None                          # acting node's id, resolved from the roster
     allowed_nodes: List[str] = field(default_factory=list)   # urgent-board allow-list
     js8: Any = None                              # Js8Database — what the JS8Call bridge heard
     menus: Any = None                            # settings.Menus — which letters each menu offers
     fortunes: List[str] = field(default_factory=list)
+
+
+#: A Node absent from the roster, or without a short name, cannot be named as
+#: the author of anything. Authorship is stored on the record and travels to
+#: peers on the wire, so the write is refused rather than attributed to nobody.
+UNKNOWN_NODE_REPLY = "Error: Unable to retrieve your node information."
 
 
 # Menu hand-off targets. A flow names where the conversation should return to;

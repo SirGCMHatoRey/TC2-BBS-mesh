@@ -12,7 +12,7 @@ import sys
 # under test. Keeps `python tests/test_x.py` working alongside pytest.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flows.base import Deps
+from flows.base import Deps, UNKNOWN_NODE_REPLY
 from flows.mail import MailFlow, MAIL_MENU
 from roster import Node
 
@@ -60,7 +60,7 @@ class FakeLookup:
 
 def deps(store=None, lookup=None, node_id="!me"):
     return Deps(store=store or FakeStore(), lookup=lookup or FakeLookup(),
-                node_num=1001, node_id=node_id)
+                node_id=node_id)
 
 
 def st(command, step, **extra):
@@ -296,6 +296,28 @@ def test_quick_check_lists_and_awaits_a_number():
     assert "01. From: AA, Subject: Hello" in r.replies[0]
     assert r.next_state == {"command": "CHECK_MAIL", "step": 1,
                             "mail": [(5, "AA", "Hello", "2026-07-08", "u5")]}
+
+
+def test_quick_send_refuses_an_unidentified_sender():
+    """SM,, used to store sender_short_name=None and tell the recipient
+    'You have a new mail message from None.'"""
+    store = FakeStore()
+    lookup = FakeLookup(nodes={"bob": [Node("!bob", "BOB", "Bob Node")]},
+                        names={"!bob": "Bob Node"}, shorts={})   # sender unknown
+    r = MailFlow().quick_send("sm,,bob,,Subj,,Body", deps(store, lookup))
+    assert r.replies == [UNKNOWN_NODE_REPLY]
+    assert store.added == []
+    assert r.notifications == []
+
+
+def test_compose_refuses_an_unidentified_sender():
+    store = FakeStore()
+    lookup = FakeLookup(names={"!bob": "Bob Node"}, shorts={})   # sender unknown
+    state = st("MAIL", 7, recipient_id="!bob", subject="Hi", content="body\n")
+    r = MailFlow().advance("END", state, deps(store, lookup))
+    assert r.replies == [UNKNOWN_NODE_REPLY]
+    assert store.added == []
+    assert r.next_state is None
 
 
 if __name__ == "__main__":

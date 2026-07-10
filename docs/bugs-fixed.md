@@ -337,6 +337,58 @@ Commit `c82bc49`.
 
 ---
 
+## 16. A Node the BBS could not name became the author of Bulletins and Mail
+
+Found by the second architecture review, reproduced before it was fixed.
+
+`deps.node_id` is resolved from the meshtastic node roster. A Node the BBS has
+not yet seen in its nodedb resolves to `None` — a first contact, or a node
+heard over a hop whose nodedb has not propagated. Four places wrote authorship
+onto a record, and only one of them checked:
+
+| Path | Derivation | Result for an unknown Node |
+| --- | --- | --- |
+| Bulletin, menu | `deps.roster.get(...)` then its own fallback | refused |
+| Bulletin, `PB,,` | `deps.lookup.short_name(...)` | stored `None` |
+| Mail, menu | `deps.lookup.short_name(...)` | stored `None` |
+| Mail, `SM,,` | `deps.lookup.short_name(...)` | stored `None` |
+
+The same domain fact — who wrote this — was derived two ways with three
+failure modes. `roster.short_name` returned `None` for a missing Node but
+raised `KeyError` for a Node present without a short name.
+
+So `PB,,General,,Fake,,body` from an unknown Node answered "posted", stored a
+Bulletin with a null author, and Replication encoded it to every peer as
+
+```
+BULLETIN|General|None|Fake|body|<uuid>
+```
+
+Mail was worse: it stored the Mail, and told the recipient
+`You have a new mail message from None.`
+
+**Cause:** authorship had no single derivation. The menu path guarded because
+someone once wrote the guard there; the other three never inherited it.
+
+**Fix:** `Lookup` is the only module that answers questions about a Node, and
+it has one failure mode — `None` for a Node that is unknown or unnamed. All
+four call sites ask it, and all four refuse the write rather than attributing
+a record to nobody. `deps.roster` stops being a second door onto the same dict;
+it survives only for the reports that iterate every Node (Stats, Wall of Shame).
+`Deps.node_num` existed solely to build the discarded fallback, and is gone.
+
+**Behaviour change:** an unidentified Node is refused when it tries to author a
+Bulletin or Mail. It can still read the menus, browse boards, and run the
+utilities — refusing authorship is not refusing the conversation.
+
+Commit `TBD`. Tests: `tests/test_characterization.py::test_quick_post_by_an_unknown_node_is_refused_and_not_replicated`,
+`::test_quick_send_mail_by_an_unknown_node_is_refused`,
+`::test_an_unknown_node_can_still_read_the_menus`,
+`tests/test_bulletin_flow.py::test_both_post_paths_refuse_a_node_without_a_short_name`,
+`tests/test_roster.py::test_short_name_of_an_unnamed_node_is_none_not_a_crash`.
+
+---
+
 ## Deliberate behaviour changes that were not bugs
 
 - **Adding a Channel now replicates from either entry point.** Previously only

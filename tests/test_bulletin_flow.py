@@ -12,7 +12,7 @@ import sys
 # under test. Keeps `python tests/test_x.py` working alongside pytest.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flows.base import Deps
+from flows.base import Deps, UNKNOWN_NODE_REPLY
 from flows.bulletin import BulletinFlow
 
 
@@ -34,16 +34,18 @@ class FakeStore:
 
 
 class FakeLookup:
+    def __init__(self, shorts=None):
+        self._shorts = shorts if shorts is not None else {"!me": "ME"}
+
     def short_name(self, node_id):
-        return "ME"
+        return self._shorts.get(node_id)
 
 
-def deps(store=None, node_id="!me", allowed=None, roster=None):
+def deps(store=None, node_id="!me", allowed=None, roster=None, lookup=None):
     return Deps(
         roster=roster if roster is not None else {"!me": {"user": {"shortName": "ME"}}},
         store=store or FakeStore(),
-        lookup=FakeLookup(),
-        node_num=1001,
+        lookup=lookup or FakeLookup(),
         node_id=node_id,
         allowed_nodes=allowed or [],
     )
@@ -148,6 +150,30 @@ def test_end_without_node_info_errors():
     r = BulletinFlow().advance("END", state, d)
     assert "Unable to retrieve your node information" in r.replies[0]
     assert r.next_state is None
+    assert store.added == []
+
+
+def test_quick_post_refuses_an_unidentified_poster():
+    """PB,, used to store sender_short_name=None and replicate it to peers."""
+    store = FakeStore()
+    d = deps(store, node_id="!ghost", roster={})
+    r = BulletinFlow().quick_post("pb,,General,,Subj,,Body", d)
+    assert r.replies == [UNKNOWN_NODE_REPLY]
+    assert store.added == []
+    assert r.keep_state
+
+
+def test_both_post_paths_refuse_a_node_without_a_short_name():
+    """A Node present in the roster but unnamed cannot author a Bulletin."""
+    store = FakeStore()
+    d = deps(store, node_id="!nameless", lookup=FakeLookup(shorts={}))
+
+    quick = BulletinFlow().quick_post("pb,,General,,Subj,,Body", d)
+    state = st("BULLETIN_POST_CONTENT", board="General", subject="Hi", content="x")
+    menu = BulletinFlow().advance("END", state, d)
+
+    assert quick.replies == [UNKNOWN_NODE_REPLY]
+    assert menu.replies == [UNKNOWN_NODE_REPLY]
     assert store.added == []
 
 

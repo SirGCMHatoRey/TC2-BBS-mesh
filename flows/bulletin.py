@@ -12,7 +12,7 @@ inside the store for now (candidate 02 will lift them out).
 """
 
 import board as boards
-from flows.base import FlowResult, GOTO_MAIN, GOTO_BBS
+from flows.base import FlowResult, GOTO_MAIN, GOTO_BBS, UNKNOWN_NODE_REPLY
 
 BULLETIN_MENU = ("📰Bulletin Menu📰\nWhich board would you like to enter?\n"
                  "[G]eneral  [I]nfo  [N]ews  [U]rgent")
@@ -73,6 +73,9 @@ class BulletinFlow:
             return FlowResult(replies=[NO_PERMISSION], keep_state=True)
 
         sender_short_name = deps.lookup.short_name(deps.node_id)
+        if sender_short_name is None:
+            return FlowResult(replies=[UNKNOWN_NODE_REPLY], keep_state=True)
+
         deps.store.add_bulletin(board.name, sender_short_name, subject, content)
         return FlowResult(
             replies=[f"Your bulletin '{subject}' has been posted to {board.name}."],
@@ -195,11 +198,10 @@ class BulletinFlow:
         board = state["board"]
         subject = state["subject"]
         content = state["content"]
-        node = deps.roster.get(deps.node_id)
-        if node is None:
-            return FlowResult(replies=["Error: Unable to retrieve your node information."],
-                              next_state=None)
-        sender_short_name = node["user"].get("shortName", f"Node {deps.node_num}")
+        sender_short_name = deps.lookup.short_name(deps.node_id)
+        if sender_short_name is None:
+            return FlowResult(replies=[UNKNOWN_NODE_REPLY], next_state=None)
+
         deps.store.add_bulletin(board, sender_short_name, subject, content)
         reply = (f"Your bulletin '{subject}' has been posted to {board}.\n"
                  f"(╯°□°)╯📄📌[{board}]")
