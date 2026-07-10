@@ -2,9 +2,10 @@
 """Run the whole suite. No test framework required.
 
 Each file runs in its own process. That is not incidental: the tests replace
-module-level collaborators — utils' clock, the database connection, the
-settings singletons — and a shared interpreter would let one file's substitute
-leak into the next.
+module-level state — the conversation states, the database connection, the
+settings cache — and a shared interpreter would let one file's substitute leak
+into the next. See docs/adr/0004: once that state is passed rather than global,
+this isolation stops being necessary.
 
     python run_tests.py              # everything
     python run_tests.py mail board   # only files whose name contains these
