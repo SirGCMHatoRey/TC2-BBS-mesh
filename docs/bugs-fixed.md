@@ -381,7 +381,7 @@ it survives only for the reports that iterate every Node (Stats, Wall of Shame).
 Bulletin or Mail. It can still read the menus, browse boards, and run the
 utilities — refusing authorship is not refusing the conversation.
 
-Commit `TBD`. Tests: `tests/test_characterization.py::test_quick_post_by_an_unknown_node_is_refused_and_not_replicated`,
+Commit `60a9b66`. Tests: `tests/test_characterization.py::test_quick_post_by_an_unknown_node_is_refused_and_not_replicated`,
 `::test_quick_send_mail_by_an_unknown_node_is_refused`,
 `::test_an_unknown_node_can_still_read_the_menus`,
 `tests/test_bulletin_flow.py::test_both_post_paths_refuse_a_node_without_a_short_name`,
