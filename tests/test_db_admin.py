@@ -13,29 +13,26 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import contextlib
 import io
-import sqlite3
 
 import db_admin
-import db_operations
+from database import Database
 
 
 def fresh_db():
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    db_operations.get_db_connection = lambda: conn
-    with contextlib.redirect_stdout(io.StringIO()):
-        db_operations.initialize_database()
-    return conn
+    database = Database(":memory:")
+    database.initialize_schema()
+    return database
 
 
 def seed():
-    conn = fresh_db()
-    db_operations.insert_bulletin("General", "AA", "B1", "body", unique_id="bu1")
-    db_operations.insert_bulletin("News", "BB", "B2", "body", unique_id="bu2")
-    db_operations.insert_mail("!s1", "S1", "!me", "M1", "body", unique_id="mu1")
-    db_operations.insert_mail("!s2", "S2", "!me", "M2", "body", unique_id="mu2")
-    db_operations.insert_channel("Net", "url1")
-    db_operations.insert_channel("Backup", "url2")
-    return conn
+    db = fresh_db()
+    db.insert_bulletin("General", "AA", "B1", "body", unique_id="bu1")
+    db.insert_bulletin("News", "BB", "B2", "body", unique_id="bu2")
+    db.insert_mail("!s1", "S1", "!me", "M1", "body", unique_id="mu1")
+    db.insert_mail("!s2", "S2", "!me", "M2", "body", unique_id="mu2")
+    db.insert_channel("Net", "url1")
+    db.insert_channel("Backup", "url2")
+    return db
 
 
 def quietly(fn, *args):
@@ -87,57 +84,65 @@ def test_row_ids_for_channels():
 
 def test_list_mail_returns_every_row():
     """It used to rebind the loop variable and return only the last row."""
-    seed()
-    mail = quietly(db_admin.list_mail)
+    db = seed()
+    mail = quietly(db_admin.list_mail, db)
     assert isinstance(mail, list)
     assert len(mail) == 2
 
 
 def test_list_bulletins_returns_every_row():
-    seed()
-    assert len(quietly(db_admin.list_bulletins)) == 2
+    db = seed()
+    assert len(quietly(db_admin.list_bulletins, db)) == 2
 
 
 def test_list_channels_returns_every_row():
-    seed()
-    assert len(quietly(db_admin.list_channels)) == 2
+    db = seed()
+    assert len(quietly(db_admin.list_channels, db)) == 2
 
 
 def test_listings_are_empty_on_a_fresh_database():
-    fresh_db()
-    assert quietly(db_admin.list_mail) == []
-    assert quietly(db_admin.list_bulletins) == []
-    assert quietly(db_admin.list_channels) == []
+    db = fresh_db()
+    assert quietly(db_admin.list_mail, db) == []
+    assert quietly(db_admin.list_bulletins, db) == []
+    assert quietly(db_admin.list_channels, db) == []
 
 
 # --- the store the admin tool deletes through -----------------------------
 
 def test_delete_bulletin_by_unique_id():
-    seed()
-    assert db_operations.delete_bulletin("bu1") is not None
-    assert [row[0] for row in db_operations.all_bulletins()] == [2]
+    db = seed()
+    assert db.delete_bulletin("bu1") is not None
+    assert [row[0] for row in db.all_bulletins()] == [2]
 
 
 def test_delete_mail_by_unique_id():
-    seed()
-    assert db_operations.delete_mail("mu2") is not None
-    assert [row[6] for row in db_operations.all_mail()] == ["mu1"]
+    db = seed()
+    assert db.delete_mail("mu2") is not None
+    assert [row[6] for row in db.all_mail()] == ["mu1"]
 
 
 def test_delete_channel_by_row_id():
-    seed()
-    assert db_operations.delete_channel(1) is True
-    assert [row[1] for row in db_operations.all_channels()] == ["Backup"]
+    db = seed()
+    assert db.delete_channel(1) is True
+    assert [row[1] for row in db.all_channels()] == ["Backup"]
 
 
 def test_delete_channel_reports_a_miss():
-    seed()
-    assert db_operations.delete_channel(99) is False
-    assert len(db_operations.all_channels()) == 2
+    db = seed()
+    assert db.delete_channel(99) is False
+    assert len(db.all_channels()) == 2
+
+
+def test_two_databases_do_not_share_state():
+    """Each Database owns its own connection; nothing is global."""
+    first, second = fresh_db(), fresh_db()
+    first.insert_channel("Only In First", "url")
+    assert len(first.all_channels()) == 1
+    assert second.all_channels() == []
 
 
 def test_admin_does_not_declare_the_schema():
-    """The schema lives in db_operations. db_admin used to keep its own copy."""
+    """The schema lives in Database. db_admin used to keep its own copy."""
     assert not hasattr(db_admin, "initialize_database")
     assert not hasattr(db_admin, "get_db_connection")
 

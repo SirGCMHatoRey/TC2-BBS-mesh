@@ -15,8 +15,14 @@ Three modules still keep their state in module-level globals:
 | Module | The global | Substituted in tests by |
 | --- | --- | --- |
 | `utils` | `user_states = {}` | `utils.user_states.clear()` |
-| `db_operations` | `thread_local.connection` | assigning over `get_db_connection` |
+| ~~`db_operations`~~ | ~~`thread_local.connection`~~ | done — now a `Database` object |
 | `settings` | seven cached values behind `configure()`/`reset()` | `settings.reset()` |
+
+**Progress.** The database global is gone. `db_operations` is now a `Database`
+object, constructed in `server.main()` and handed to `on_receive` through the
+closure `pubsub` already gave us, and to `db_admin.main(db)` on its own. Tests
+build `Database(":memory:")` and pass it in — no line of the suite reassigns the
+connection any more. The conversation-state and settings globals remain.
 
 The counter-example is already in the repo. `Js8Database` owns its path and its
 connection and is constructed with `":memory:"` in tests. Nothing is reassigned,

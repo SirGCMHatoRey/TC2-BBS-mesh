@@ -17,7 +17,7 @@ import time
 
 import settings
 from config_init import initialize_config, get_interface, init_cli_parser, merge_config
-from db_operations import initialize_database
+from database import Database
 from js8call_integration import JS8CallClient
 from message_processing import on_receive
 from pubsub import pub
@@ -67,13 +67,15 @@ def main():
 
     interface = get_interface(system_config)
     transport = MeshtasticTransport(interface)
+    database = Database()
 
     logging.info(f"TC²-BBS is running on {system_config['interface_type']} interface...")
 
-    initialize_database()
+    database.initialize_schema()
+    print("Database schema initialized.")
 
     def receive_packet(packet, interface):
-        on_receive(packet, interface)
+        on_receive(packet, interface, database)
 
     pub.subscribe(receive_packet, system_config['mqtt_topic'])
 

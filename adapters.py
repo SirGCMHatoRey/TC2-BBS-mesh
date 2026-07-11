@@ -7,7 +7,6 @@ interface — they never learn that peers or the mesh exist.
 ``Lookup`` answers questions about the node roster. Neither holds the radio.
 """
 
-import db_operations
 import roster
 from events import (
     BulletinDeleted, BulletinPosted, ChannelAdded, MailDeleted, MailSent, Origin,
@@ -15,67 +14,68 @@ from events import (
 
 
 class Store:
-    def __init__(self, replication):
+    def __init__(self, replication, database):
         self._replication = replication
+        self._db = database
 
     # bulletins ------------------------------------------------------------
     def get_bulletins(self, board):
-        return db_operations.get_bulletins(board)
+        return self._db.get_bulletins(board)
 
     def get_bulletin_content(self, bulletin_id):
-        return db_operations.get_bulletin_content(bulletin_id)
+        return self._db.get_bulletin_content(bulletin_id)
 
     def add_bulletin(self, board, sender_short_name, subject, content):
-        event = db_operations.insert_bulletin(board, sender_short_name, subject, content)
+        event = self._db.insert_bulletin(board, sender_short_name, subject, content)
         self._replication.publish(event, Origin.LOCAL)
         return event.unique_id
 
     # mail -----------------------------------------------------------------
     def get_mail(self, recipient_id):
-        return db_operations.get_mail(recipient_id)
+        return self._db.get_mail(recipient_id)
 
     def get_mail_content(self, mail_id, recipient_id):
-        return db_operations.get_mail_content(mail_id, recipient_id)
+        return self._db.get_mail_content(mail_id, recipient_id)
 
     def add_mail(self, sender_id, sender_short_name, recipient_id, subject, content):
-        event = db_operations.insert_mail(sender_id, sender_short_name, recipient_id,
+        event = self._db.insert_mail(sender_id, sender_short_name, recipient_id,
                                           subject, content)
         self._replication.publish(event, Origin.LOCAL)
         return event.unique_id
 
     def delete_mail(self, unique_id, recipient_id=None):
-        event = db_operations.delete_mail(unique_id)
+        event = self._db.delete_mail(unique_id)
         if event is not None:
             self._replication.publish(event, Origin.LOCAL)
 
     def sender_id_by_mail_id(self, mail_id):
-        return db_operations.get_sender_id_by_mail_id(mail_id)
+        return self._db.sender_id_by_mail_id(mail_id)
 
     # channels -------------------------------------------------------------
     def get_channels(self):
-        return db_operations.get_channels()
+        return self._db.get_channels()
 
     def add_channel(self, name, url):
-        event = db_operations.insert_channel(name, url)
+        event = self._db.insert_channel(name, url)
         self._replication.publish(event, Origin.LOCAL)
 
     # replication inbound --------------------------------------------------
     def accept(self, event):
         """Persist a record that arrived from a peer BBS Node."""
         if isinstance(event, BulletinPosted):
-            db_operations.insert_bulletin(event.board, event.sender_short_name,
+            self._db.insert_bulletin(event.board, event.sender_short_name,
                                           event.subject, event.content,
                                           unique_id=event.unique_id)
         elif isinstance(event, MailSent):
-            db_operations.insert_mail(event.sender_id, event.sender_short_name,
+            self._db.insert_mail(event.sender_id, event.sender_short_name,
                                       event.recipient_id, event.subject,
                                       event.content, unique_id=event.unique_id)
         elif isinstance(event, BulletinDeleted):
-            db_operations.delete_bulletin(event.unique_id)
+            self._db.delete_bulletin(event.unique_id)
         elif isinstance(event, MailDeleted):
-            db_operations.delete_mail(event.unique_id)
+            self._db.delete_mail(event.unique_id)
         elif isinstance(event, ChannelAdded):
-            db_operations.insert_channel(event.name, event.url)
+            self._db.insert_channel(event.name, event.url)
 
 
 class Lookup:

@@ -20,15 +20,11 @@ import sys
 # under test. Keeps `python tests/test_x.py` working alongside pytest.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import contextlib
-import io
-import sqlite3
-
 import utils
-import db_operations
 import message_processing
 import settings
 from settings import Menus
+from database import Database
 from fakes import FakeTransport, make_node
 
 MENUS = Menus(main=["Q", "B", "U", "X"],
@@ -50,14 +46,15 @@ def _settings(bbs_nodes=(), allowed_nodes=()):
 class Session:
     """Thin shim over process_message, shaped like the Session seam."""
 
-    def __init__(self, transport, node_num):
+    def __init__(self, transport, database, node_num):
         self.transport = transport
+        self.db = database
         self.node = node_num
 
     def advance(self, message):
         """Feed one inbound message, return the replies sent to this node."""
         self.transport.clear()
-        message_processing.process_message(self.node, message, self.transport)
+        message_processing.process_message(self.node, message, self.transport, self.db)
         return self.transport.sent_to(self.node)
 
     def broadcasts(self):
@@ -67,7 +64,7 @@ class Session:
     def sync(self, message):
         """Feed one inbound sync message from a peer BBS Node."""
         self.transport.clear()
-        message_processing.process_message(self.node, message, self.transport,
+        message_processing.process_message(self.node, message, self.transport, self.db,
                                            is_sync_message=True)
         return list(self.transport.outbox)
 
@@ -77,19 +74,20 @@ SENDER_ID = "!sender"
 
 
 def new_session(allowed_nodes=(), bbs_nodes=(), extra_nodes=None):
-    """Fresh conversation: cleared state, in-memory database, injected config."""
+    """Fresh conversation: cleared state, in-memory database, injected config.
+
+    The Database is constructed and passed, not patched over a module global.
+    """
     utils.user_states.clear()
     _settings(bbs_nodes=bbs_nodes, allowed_nodes=allowed_nodes)
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    db_operations.get_db_connection = lambda: conn
-    with contextlib.redirect_stdout(io.StringIO()):
-        db_operations.initialize_database()
+    database = Database(":memory:")
+    database.initialize_schema()
 
     nodes = {SENDER_ID: make_node(SENDER_NUM, "SEND", "Sender Node")}
     if extra_nodes:
         nodes.update(extra_nodes)
-    return Session(FakeTransport(nodes, my_num=9999), SENDER_NUM)
+    return Session(FakeTransport(nodes, my_num=9999), database, SENDER_NUM)
 
 
 def joined(replies):
@@ -229,7 +227,7 @@ def test_send_mail_end_to_end_persists_and_notifies():
 
     # Recipient gets the out-of-band nudge, and the mail is stored for them.
     assert "new mail message from SEND" in joined(s.broadcasts())
-    assert len(db_operations.get_mail("!bob")) == 1
+    assert len(s.db.get_mail("!bob")) == 1
 
 
 # --------------------------------------------------------------------------
@@ -269,7 +267,7 @@ def test_quick_post_bulletin_to_urgent_respects_allow_list():
     s = new_session(allowed_nodes=["!someone_else"])
     r = joined(s.advance("pb,,Urgent,,Fake alert,,ignore me"))
     assert "don't have permission" in r
-    assert db_operations.get_bulletins("Urgent") == []
+    assert s.db.get_bulletins("Urgent") == []
     assert [t for _, t in s.transport.outbox if "NEW URGENT BULLETIN" in t] == []
 
 
@@ -277,7 +275,7 @@ def test_quick_post_bulletin_to_general_persists():
     s = new_session()
     r = joined(s.advance("pb,,general,,Subj,,Body"))
     assert "posted to General" in r
-    assert len(db_operations.get_bulletins("General")) == 1
+    assert len(s.db.get_bulletins("General")) == 1
 
 
 def test_quick_post_channel_actually_works():
@@ -285,7 +283,7 @@ def test_quick_post_channel_actually_works():
     s = new_session()
     r = joined(s.advance("chp,,MyNet,,https://example/x"))
     assert "has been added to the directory" in r
-    assert db_operations.get_channels() == [("MyNet", "https://example/x")]
+    assert s.db.get_channels() == [("MyNet", "https://example/x")]
 
 
 def test_quick_command_leaves_the_conversation_where_it_was():
@@ -310,7 +308,7 @@ def test_post_bulletin_to_general_persists():
     r = joined(s.advance("END"))
     assert "posted to General" in r
 
-    assert len(db_operations.get_bulletins("General")) == 1
+    assert len(s.db.get_bulletins("General")) == 1
 
 
 def test_urgent_post_denied_without_permission():
@@ -336,7 +334,7 @@ def test_urgent_post_allowed_broadcasts():
 
     broadcast = joined(s.broadcasts())
     assert "NEW URGENT BULLETIN" in broadcast
-    assert len(db_operations.get_bulletins("Urgent")) == 1
+    assert len(s.db.get_bulletins("Urgent")) == 1
 
 
 # --------------------------------------------------------------------------
@@ -367,14 +365,14 @@ def test_channel_posted_via_menu_now_syncs_to_peers():
     assert "has been added to the directory" in r
 
     assert s.transport.sent_to("!peer") == ["CHANNEL|MyNet|https://example/x"]
-    assert db_operations.get_channels() == [("MyNet", "https://example/x")]
+    assert s.db.get_channels() == [("MyNet", "https://example/x")]
 
 
 def test_synced_channel_is_stored_not_answered():
     """An inbound CHANNEL| from a peer is ingested, not treated as conversation."""
     s = new_session()
     s.sync("CHANNEL|PeerNet|https://peer/x")
-    assert db_operations.get_channels() == [("PeerNet", "https://peer/x")]
+    assert s.db.get_channels() == [("PeerNet", "https://peer/x")]
     assert s.transport.outbox == []
 
 
@@ -394,7 +392,7 @@ def test_quick_post_by_an_unknown_node_is_refused_and_not_replicated():
     s = unknown_sender_session(bbs_nodes=["!peer"])
     r = joined(s.advance("pb,,General,,Fake,,body"))
     assert "Unable to retrieve your node information" in r
-    assert db_operations.get_bulletins("General") == []
+    assert s.db.get_bulletins("General") == []
     assert s.transport.sent_to("!peer") == []
 
 
@@ -405,7 +403,7 @@ def test_quick_send_mail_by_an_unknown_node_is_refused():
     del s.transport.nodes[SENDER_ID]          # the sender, not the recipient
     r = joined(s.advance("sm,,bob,,Subj,,Body"))
     assert "Unable to retrieve your node information" in r
-    assert db_operations.get_mail("!bob") == []
+    assert s.db.get_mail("!bob") == []
     assert s.transport.sent_to("!peer") == []
     assert s.transport.sent_to("!bob") == []
 
@@ -432,7 +430,7 @@ def test_synced_urgent_bulletin_broadcasts_once():
 
     urgent = [t for _, t in s.transport.outbox if "NEW URGENT BULLETIN" in t]
     assert len(urgent) == 1, f"expected 1 broadcast, got {len(urgent)}"
-    assert len(db_operations.get_bulletins("Urgent")) == 1
+    assert len(s.db.get_bulletins("Urgent")) == 1
 
 
 def test_synced_general_bulletin_does_not_broadcast():
@@ -440,7 +438,7 @@ def test_synced_general_bulletin_does_not_broadcast():
     s.sync("BULLETIN|General|AA|Hello|Body|uid-2")
 
     assert [t for _, t in s.transport.outbox if "NEW URGENT BULLETIN" in t] == []
-    assert len(db_operations.get_bulletins("General")) == 1
+    assert len(s.db.get_bulletins("General")) == 1
 
 
 def test_synced_bulletin_is_not_resynced_to_peers():
@@ -454,7 +452,7 @@ def test_synced_bulletin_is_not_resynced_to_peers():
 def test_synced_mail_is_stored():
     s = new_session()
     s.sync("MAIL|!bob|BOB|!me|Subject|Body|uid-4")
-    assert len(db_operations.get_mail("!me")) == 1
+    assert len(s.db.get_mail("!me")) == 1
 
 
 def test_synced_bulletin_deletion_removes_it():
@@ -465,17 +463,17 @@ def test_synced_bulletin_deletion_removes_it():
     """
     s = new_session()
     s.sync("BULLETIN|General|AA|Hello|Body|uid-5")
-    assert len(db_operations.get_bulletins("General")) == 1
+    assert len(s.db.get_bulletins("General")) == 1
 
     s.sync("DELETE_BULLETIN|uid-5")
-    assert db_operations.get_bulletins("General") == []
+    assert s.db.get_bulletins("General") == []
 
 
 def test_synced_mail_deletion_removes_it():
     s = new_session()
     s.sync("MAIL|!bob|BOB|!me|Subject|Body|uid-6")
     s.sync("DELETE_MAIL|uid-6")
-    assert db_operations.get_mail("!me") == []
+    assert s.db.get_mail("!me") == []
 
 
 def test_unknown_sync_message_is_ignored():

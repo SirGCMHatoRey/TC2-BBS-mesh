@@ -21,10 +21,10 @@ import settings
 _SESSION = Session()
 
 
-def _build_deps(sender_id, transport):
+def _build_deps(sender_id, transport, database):
     nodes = transport.nodes
     lookup = Lookup(nodes)
-    store = Store(Replication(transport, settings.bbs_nodes()))
+    store = Store(Replication(transport, settings.bbs_nodes()), database)
     return Deps(
         roster=nodes,
         store=store,
@@ -63,7 +63,7 @@ def _enact(sender_id, result, deps, transport):
     update_user_state(sender_id, handed_off.next_state)
 
 
-def process_message(sender_id, message, transport, is_sync_message=False):
+def process_message(sender_id, message, transport, database, is_sync_message=False):
     if is_sync_message:
         # A record from a peer: store it, then let Replication decide whether
         # the mesh needs to hear about it. It is never echoed back to peers.
@@ -72,7 +72,7 @@ def process_message(sender_id, message, transport, is_sync_message=False):
             logging.error(f"Unrecognized sync message: {message!r}")
             return
         peers = settings.bbs_nodes()
-        Store(Replication(transport, peers)).accept(event)
+        Store(Replication(transport, peers), database).accept(event)
         Replication(transport, peers).publish(event, Origin.SYNCED)
         return
 
@@ -84,7 +84,7 @@ def process_message(sender_id, message, transport, is_sync_message=False):
     if len(message_lower) == 2 and message_lower[1] == 'x':
         message_lower = message_lower[0]
 
-    deps = _build_deps(sender_id, transport)
+    deps = _build_deps(sender_id, transport, database)
 
     # Quick commands act from anywhere, without moving the conversation.
     result = _SESSION.quick(message_strip, deps)
@@ -107,7 +107,7 @@ def process_message(sender_id, message, transport, is_sync_message=False):
     _enact(sender_id, result, deps, transport)
 
 
-def on_receive(packet, interface):
+def on_receive(packet, interface, database):
     """The one place that meets the meshtastic interface and wraps it."""
     try:
         if 'decoded' in packet and packet['decoded']['portnum'] == 'TEXT_MESSAGE_APP':
@@ -129,11 +129,11 @@ def on_receive(packet, interface):
 
             if sender_node_id in settings.bbs_nodes():
                 if is_sync_message:
-                    process_message(sender_id, message_string, transport, is_sync_message=True)
+                    process_message(sender_id, message_string, transport, database, is_sync_message=True)
                 else:
                     logging.info("Ignoring non-sync message from known BBS node")
             elif to_id is not None and to_id != 0 and to_id != 255 and to_id == transport.my_num:
-                process_message(sender_id, message_string, transport, is_sync_message=False)
+                process_message(sender_id, message_string, transport, database, is_sync_message=False)
             else:
                 logging.info("Ignoring message sent to group chat or from unknown node")
     except KeyError as e:

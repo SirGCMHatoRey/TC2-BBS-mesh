@@ -2,17 +2,19 @@
 
 """Database Administrator — a console for inspecting and pruning the BBS store.
 
-It owns the console and nothing else. Every read and write goes through
-`db_operations`, which is the one place that knows the schema.
+It owns the console and nothing else. Every read and write goes through a
+`Database`, which is the one place that knows the schema.
 
 Deletions here are **local only**. The server replicates a mail deletion to its
 peer BBS nodes when a user deletes it through the BBS; this tool has no radio,
 so a record deleted here stays on every peer that has a copy.
+
+It opens its own Database. Run it while the server is stopped.
 """
 
 import os
 
-import db_operations as db
+from database import Database
 
 CANCEL = 'X'
 
@@ -53,7 +55,7 @@ def row_ids_for(rows, ids):
 
 # --- listings --------------------------------------------------------------
 
-def list_bulletins():
+def list_bulletins(db):
     bulletins = db.all_bulletins()
     if bulletins:
         print_bold("Bulletins:")
@@ -66,7 +68,7 @@ def list_bulletins():
     return bulletins
 
 
-def list_mail():
+def list_mail(db):
     mail = db.all_mail()
     if mail:
         print_bold("Mail:")
@@ -79,7 +81,7 @@ def list_mail():
     return mail
 
 
-def list_channels():
+def list_channels(db):
     channels = db.all_channels()
     if channels:
         print_bold("Channels:")
@@ -105,8 +107,8 @@ def _report(deleted, unknown, noun):
     print_separator()
 
 
-def delete_bulletins():
-    bulletins = list_bulletins()
+def delete_bulletins(db):
+    bulletins = list_bulletins(db)
     if not bulletins:
         return
     ids = _ask("Enter the bulletin ID(s) to delete (comma-separated) or 'X' to cancel: ")
@@ -119,8 +121,8 @@ def delete_bulletins():
     _report(deleted, unknown, "bulletin")
 
 
-def delete_mail():
-    mail = list_mail()
+def delete_mail(db):
+    mail = list_mail(db)
     if not mail:
         return
     ids = _ask("Enter the mail ID(s) to delete (comma-separated) or 'X' to cancel: ")
@@ -133,8 +135,8 @@ def delete_mail():
     _report(deleted, unknown, "mail")
 
 
-def delete_channels():
-    channels = list_channels()
+def delete_channels(db):
+    channels = list_channels(db)
     if not channels:
         return
     ids = _ask("Enter the channel ID(s) to delete (comma-separated) or 'X' to cancel: ")
@@ -203,9 +205,10 @@ _ACTIONS = {
 }
 
 
-def main():
+def main(db=None):
+    db = db if db is not None else Database()
     display_banner()
-    db.initialize_database()
+    db.initialize_schema()
     while True:
         display_menu()
         choice = input_bold("Enter your choice: ")
@@ -217,7 +220,7 @@ def main():
             print_bold("Invalid choice. Please try again.")
             print_separator()
             continue
-        action()
+        action(db)
 
 
 if __name__ == "__main__":
