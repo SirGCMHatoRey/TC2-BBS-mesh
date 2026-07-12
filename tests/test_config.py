@@ -106,8 +106,19 @@ def test_config_is_frozen():
     raise AssertionError("Config should be frozen")
 
 
-def test_settings_has_no_module_state():
-    """The whole point of candidate 04: no configure(), no reset(), no cache."""
+def test_missing_menu_section_degrades_to_empty_menus():
+    """A config with no [menu] section yields empty menus, not a KeyError.
+
+    The old menus() used bracket access and raised; _items() falls back to ''.
+    """
+    config = _load("[sync]\nbbs_nodes = !p\n")
+    assert config.menus.main == []
+    assert config.menus.bbs == []
+    assert config.menus.utilities == []
+
+
+def test_settings_holds_no_mutable_module_state():
+    """No configure(), no reset(), no cache — configuration is a value."""
     assert not hasattr(settings, "configure")
     assert not hasattr(settings, "reset")
 

@@ -7,8 +7,8 @@ urgent policy come from the Board value type; enforcement of the allow-list
 stays here, where the acting node is known.
 
 Pure: reads and writes go through the injected store; the confirmation text
-is returned, and the post's side effects (peer sync, urgent broadcast) live
-inside the store for now (candidate 02 will lift them out).
+is returned, and the post's side effects (peer sync, urgent broadcast) are the
+store's Replication, not this flow's.
 """
 
 import board as boards

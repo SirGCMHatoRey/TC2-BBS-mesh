@@ -18,15 +18,14 @@ from typing import Any, List, Optional
 class Deps:
     """Collaborators handed to a flow so it stays pure.
 
-    Built fresh at the router edge from the live interface. Grows as flows
-    migrate: ``roster`` for stats, ``store`` for persistence (candidate 02's
-    seam showing up early), and the acting-node context a flow needs to make
-    permission decisions without touching the interface itself.
+    Built fresh at the router edge for each message. A flow reads only the
+    fields it needs; ``roster`` and the acting-node context let it make
+    permission decisions without touching the radio.
     """
 
-    roster: dict = field(default_factory=dict)   # node_id -> node dict (interface.nodes)
-    store: Any = None                            # persistence adapter (candidate 02 seam)
-    lookup: Any = None                           # node-resolution adapter (candidate 01 seam)
+    roster: dict = field(default_factory=dict)   # node_id -> node dict (the live node map)
+    store: Any = None                            # persistence + replication
+    lookup: Any = None                           # node resolution over the roster
     node_id: Any = None                          # acting node's id, resolved from the roster
     allowed_nodes: List[str] = field(default_factory=list)   # urgent-board allow-list
     js8: Any = None                              # Js8Database — what the JS8Call bridge heard
@@ -73,5 +72,5 @@ class FlowResult:
     #: Out-of-band messages to nodes other than the sender, as (destination,
     #: text) pairs — e.g. the "you have new mail" nudge to a recipient. The
     #: router sends these after the replies. This is the cross-node messaging
-    #: that the Transport seam (candidate 01) will eventually own.
+    #: cross-node messaging that the Transport seam owns.
     notifications: List[tuple] = field(default_factory=list)
