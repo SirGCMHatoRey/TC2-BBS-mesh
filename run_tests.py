@@ -2,10 +2,11 @@
 """Run the whole suite. No test framework required.
 
 Each file runs in its own process. That is not incidental: the tests replace
-module-level state — the conversation states, the database connection, the
-settings cache — and a shared interpreter would let one file's substitute leak
-into the next. See docs/adr/0004: once that state is passed rather than global,
-this isolation stops being necessary.
+the one remaining piece of module-level state — the conversation states in
+utils — and a shared interpreter would let one file's substitute leak into the
+next. See docs/adr/0004: the database connection and the settings cache are
+already passed rather than global; once the conversation state is too, this
+isolation stops being necessary.
 
     python run_tests.py              # everything
     python run_tests.py mail board   # only files whose name contains these

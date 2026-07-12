@@ -16,24 +16,24 @@ from replication import Replication
 from transport import MeshtasticTransport
 import replication
 import roster
-import settings
 
 _SESSION = Session()
 
 
-def _build_deps(sender_id, transport, database):
+def _build_deps(sender_id, transport, runtime):
+    config = runtime.config
     nodes = transport.nodes
     lookup = Lookup(nodes)
-    store = Store(Replication(transport, settings.bbs_nodes()), database)
+    store = Store(Replication(transport, config.bbs_nodes), runtime.database)
     return Deps(
         roster=nodes,
         store=store,
         lookup=lookup,
         node_id=lookup.id_from_num(sender_id),
-        allowed_nodes=settings.allowed_nodes(),
-        js8=settings.js8_database(),
-        menus=settings.menus(),
-        fortunes=settings.fortunes(),
+        allowed_nodes=config.allowed_nodes,
+        js8=runtime.js8_database,
+        menus=config.menus,
+        fortunes=config.fortunes,
     )
 
 
@@ -63,7 +63,7 @@ def _enact(sender_id, result, deps, transport):
     update_user_state(sender_id, handed_off.next_state)
 
 
-def process_message(sender_id, message, transport, database, is_sync_message=False):
+def process_message(sender_id, message, transport, runtime, is_sync_message=False):
     if is_sync_message:
         # A record from a peer: store it, then let Replication decide whether
         # the mesh needs to hear about it. It is never echoed back to peers.
@@ -71,8 +71,8 @@ def process_message(sender_id, message, transport, database, is_sync_message=Fal
         if event is None:
             logging.error(f"Unrecognized sync message: {message!r}")
             return
-        peers = settings.bbs_nodes()
-        Store(Replication(transport, peers), database).accept(event)
+        peers = runtime.config.bbs_nodes
+        Store(Replication(transport, peers), runtime.database).accept(event)
         Replication(transport, peers).publish(event, Origin.SYNCED)
         return
 
@@ -84,7 +84,7 @@ def process_message(sender_id, message, transport, database, is_sync_message=Fal
     if len(message_lower) == 2 and message_lower[1] == 'x':
         message_lower = message_lower[0]
 
-    deps = _build_deps(sender_id, transport, database)
+    deps = _build_deps(sender_id, transport, runtime)
 
     # Quick commands act from anywhere, without moving the conversation.
     result = _SESSION.quick(message_strip, deps)
@@ -107,7 +107,7 @@ def process_message(sender_id, message, transport, database, is_sync_message=Fal
     _enact(sender_id, result, deps, transport)
 
 
-def on_receive(packet, interface, database):
+def on_receive(packet, interface, runtime):
     """The one place that meets the meshtastic interface and wraps it."""
     try:
         if 'decoded' in packet and packet['decoded']['portnum'] == 'TEXT_MESSAGE_APP':
@@ -127,13 +127,13 @@ def on_receive(packet, interface, database):
 
             is_sync_message = replication.is_sync_message(message_string)
 
-            if sender_node_id in settings.bbs_nodes():
+            if sender_node_id in runtime.config.bbs_nodes:
                 if is_sync_message:
-                    process_message(sender_id, message_string, transport, database, is_sync_message=True)
+                    process_message(sender_id, message_string, transport, runtime, is_sync_message=True)
                 else:
                     logging.info("Ignoring non-sync message from known BBS node")
             elif to_id is not None and to_id != 0 and to_id != 255 and to_id == transport.my_num:
-                process_message(sender_id, message_string, transport, database, is_sync_message=False)
+                process_message(sender_id, message_string, transport, runtime, is_sync_message=False)
             else:
                 logging.info("Ignoring message sent to group chat or from unknown node")
     except KeyError as e:

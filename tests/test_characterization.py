@@ -22,9 +22,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import utils
 import message_processing
-import settings
-from settings import Menus
+from settings import Config, Menus
 from database import Database
+from js8_db import Js8Database
+from runtime import Runtime
 from fakes import FakeTransport, make_node
 
 MENUS = Menus(main=["Q", "B", "U", "X"],
@@ -32,11 +33,10 @@ MENUS = Menus(main=["Q", "B", "U", "X"],
               utilities=["S", "F", "W", "X"])
 
 
-def _settings(bbs_nodes=(), allowed_nodes=()):
-    """Everything the router reads from config, injected. No file is opened."""
-    settings.reset()
-    settings.configure(menus=MENUS, fortunes=["Stay curious"], js8_db_path=None,
-                       bbs_nodes=list(bbs_nodes), allowed_nodes=list(allowed_nodes))
+def _config(bbs_nodes=(), allowed_nodes=()):
+    """The config the router reads, built as a value. No file is opened."""
+    return Config(menus=MENUS, fortunes=["Stay curious"],
+                  bbs_nodes=list(bbs_nodes), allowed_nodes=list(allowed_nodes))
 
 
 # --------------------------------------------------------------------------
@@ -46,15 +46,16 @@ def _settings(bbs_nodes=(), allowed_nodes=()):
 class Session:
     """Thin shim over process_message, shaped like the Session seam."""
 
-    def __init__(self, transport, database, node_num):
+    def __init__(self, transport, runtime, node_num):
         self.transport = transport
-        self.db = database
+        self.runtime = runtime
+        self.db = runtime.database
         self.node = node_num
 
     def advance(self, message):
         """Feed one inbound message, return the replies sent to this node."""
         self.transport.clear()
-        message_processing.process_message(self.node, message, self.transport, self.db)
+        message_processing.process_message(self.node, message, self.transport, self.runtime)
         return self.transport.sent_to(self.node)
 
     def broadcasts(self):
@@ -64,7 +65,7 @@ class Session:
     def sync(self, message):
         """Feed one inbound sync message from a peer BBS Node."""
         self.transport.clear()
-        message_processing.process_message(self.node, message, self.transport, self.db,
+        message_processing.process_message(self.node, message, self.transport, self.runtime,
                                            is_sync_message=True)
         return list(self.transport.outbox)
 
@@ -74,20 +75,22 @@ SENDER_ID = "!sender"
 
 
 def new_session(allowed_nodes=(), bbs_nodes=(), extra_nodes=None):
-    """Fresh conversation: cleared state, in-memory database, injected config.
+    """Fresh conversation: cleared state, in-memory stores, config as a value.
 
-    The Database is constructed and passed, not patched over a module global.
+    Everything is constructed and passed as a Runtime, not patched over a
+    module global.
     """
     utils.user_states.clear()
-    _settings(bbs_nodes=bbs_nodes, allowed_nodes=allowed_nodes)
 
     database = Database(":memory:")
     database.initialize_schema()
+    runtime = Runtime(config=_config(bbs_nodes=bbs_nodes, allowed_nodes=allowed_nodes),
+                      database=database, js8_database=Js8Database(None))
 
     nodes = {SENDER_ID: make_node(SENDER_NUM, "SEND", "Sender Node")}
     if extra_nodes:
         nodes.update(extra_nodes)
-    return Session(FakeTransport(nodes, my_num=9999), database, SENDER_NUM)
+    return Session(FakeTransport(nodes, my_num=9999), runtime, SENDER_NUM)
 
 
 def joined(replies):

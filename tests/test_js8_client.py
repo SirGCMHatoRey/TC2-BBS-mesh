@@ -16,10 +16,8 @@ import socket
 import threading
 import time
 
-import settings
-
-settings.configure(js8_db_path=":memory:")
-
+from js8_db import Js8Database
+from settings import Js8Config
 from js8call_integration import JS8CallClient, decode_messages
 from fakes import FakeTransport
 
@@ -105,14 +103,12 @@ class Js8Server:
 
 
 def new_client(server, urgent=(), groups=()):
-    settings.reset()
-    settings.configure(js8_db_path=":memory:")
-    client = JS8CallClient(FakeTransport())
-    client.server = server.address
-    client.js8urgent = list(urgent)
-    client.js8groups = list(groups)
-    client.store_messages = True
-    return client
+    host, port = server.address
+    js8_config = Js8Config(host=host, port=port, db_path=":memory:",
+                           groups=list(groups), urgent=list(urgent), store_messages=True)
+    database = Js8Database(":memory:")
+    database.create_tables()
+    return JS8CallClient(FakeTransport(), js8_config, database)
 
 
 def wait_until(predicate, timeout=2):
@@ -190,16 +186,12 @@ def test_close_unblocks_and_joins_the_listener():
 
 
 def test_close_is_safe_when_never_started():
-    settings.reset()
-    settings.configure(js8_db_path=None)
-    client = JS8CallClient(FakeTransport())
+    client = JS8CallClient(FakeTransport(), Js8Config(), Js8Database(None))
     client.close()                       # must not raise
 
 
 def test_start_does_nothing_when_unconfigured():
-    settings.reset()
-    settings.configure(js8_db_path=None)
-    client = JS8CallClient(FakeTransport())
+    client = JS8CallClient(FakeTransport(), Js8Config(), Js8Database(None))
     client.start()
     assert client._thread is None
     assert not client.connected

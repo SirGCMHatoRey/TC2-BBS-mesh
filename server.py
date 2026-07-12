@@ -18,9 +18,11 @@ import time
 import settings
 from config_init import initialize_config, get_interface, init_cli_parser, merge_config
 from database import Database
+from js8_db import Js8Database
 from js8call_integration import JS8CallClient
 from message_processing import on_receive
 from pubsub import pub
+from runtime import Runtime
 from transport import MeshtasticTransport
 
 # General logging
@@ -61,13 +63,15 @@ def main():
 
     merge_config(system_config, args)
 
-    settings.configure(config_file=system_config['config_file'])
-    print(f"Configured to sync with the following BBS nodes: {settings.bbs_nodes()}")
-    print(f"Nodes with Urgent board permissions: {settings.allowed_nodes()}")
+    config = settings.load(system_config['config_file'])
+    print(f"Configured to sync with the following BBS nodes: {config.bbs_nodes}")
+    print(f"Nodes with Urgent board permissions: {config.allowed_nodes}")
 
     interface = get_interface(system_config)
     transport = MeshtasticTransport(interface)
     database = Database()
+    js8_database = Js8Database(config.js8.db_path)
+    runtime = Runtime(config=config, database=database, js8_database=js8_database)
 
     logging.info(f"TC²-BBS is running on {system_config['interface_type']} interface...")
 
@@ -75,13 +79,13 @@ def main():
     print("Database schema initialized.")
 
     def receive_packet(packet, interface):
-        on_receive(packet, interface, database)
+        on_receive(packet, interface, runtime)
 
     pub.subscribe(receive_packet, system_config['mqtt_topic'])
 
     # Initialize and start JS8Call Client if configured. It listens on its own
     # thread, so this returns immediately and does nothing when unconfigured.
-    js8call_client = JS8CallClient(transport)
+    js8call_client = JS8CallClient(transport, config.js8, js8_database)
     js8call_client.logger = js8call_logger
     js8call_client.start()
 

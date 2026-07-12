@@ -11,12 +11,9 @@ from socket import socket, AF_INET, SOCK_STREAM, SHUT_RDWR
 import json
 import threading
 import time
-import configparser
 import logging
 
 from meshtastic import BROADCAST_NUM
-
-import settings
 
 #: How long close() waits for the listener to notice and stop.
 _JOIN_TIMEOUT = 2.0
@@ -57,28 +54,20 @@ def decode_messages(buffer, logger=None):
 
 
 class JS8CallClient:
-    def __init__(self, transport, logger=None):
+    def __init__(self, transport, js8_config, js8_database, logger=None):
         self.logger = logger or logging.getLogger('js8call')
         self.logger.setLevel(logging.INFO)
         self.logger.propagate = False
 
-        self.config = configparser.ConfigParser()
-        self.config.read(settings.config_file())
-
-        self.server = (
-            self.config.get('js8call', 'host', fallback=None),
-            self.config.getint('js8call', 'port', fallback=None)
-        )
-        self.js8groups = [g.strip() for g in
-                          self.config.get('js8call', 'js8groups', fallback='').split(',')]
-        self.store_messages = self.config.getboolean('js8call', 'store_messages', fallback=True)
-        self.js8urgent = [g.strip() for g in
-                          self.config.get('js8call', 'js8urgent', fallback='').split(',')]
+        self.server = (js8_config.host, js8_config.port)
+        self.js8groups = list(js8_config.groups)
+        self.js8urgent = list(js8_config.urgent)
+        self.store_messages = js8_config.store_messages
 
         self.connected = False
         self.sock = None
         self.transport = transport
-        self.database = settings.js8_database()
+        self.database = js8_database
         self._thread = None
 
         if self.database.configured:
