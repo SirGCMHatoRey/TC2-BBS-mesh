@@ -62,14 +62,18 @@ class Session:
     # --- routing ----------------------------------------------------------
 
     def _route(self, node, message, deps):
-        message = message.strip()
-        lowered = message.lower()
+        # Routing decisions read a stripped, lowercased copy, but the flow
+        # itself receives the raw message: a content-capture step (a mail body,
+        # a bulletin body) stores it verbatim, so leading whitespace and blank
+        # lines must survive. Menu steps strip what they compare themselves.
+        stripped = message.strip()
+        lowered = stripped.lower()
         # Tolerate a repeated final character on single-letter commands (e.g. "rx").
         if len(lowered) == 2 and lowered[1] == 'x':
             lowered = lowered[0]
 
         # Quick commands act from anywhere, without moving the conversation.
-        result = self._quick_command(message, deps)
+        result = self._quick_command(stripped, deps)
         if result is not None:
             return result
 

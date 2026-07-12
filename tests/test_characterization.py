@@ -314,6 +314,23 @@ def test_post_bulletin_to_general_persists():
     assert len(s.db.get_bulletins("General")) == 1
 
 
+def test_bulletin_body_keeps_leading_whitespace():
+    """A content-capture step stores the message verbatim. The routing layer
+    must not strip the text before the flow sees it."""
+    s = new_session()
+    s.advance("b")
+    s.advance("b")
+    s.advance("g")            # General board
+    s.advance("p")            # post
+    s.advance("Subj")         # subject
+    s.advance("    indented line")   # leading spaces must survive
+    s.advance("END")
+
+    bulletin_id = s.db.get_bulletins("General")[0][0]
+    content = s.db.get_bulletin_content(bulletin_id)[3]
+    assert content == "    indented line\n"
+
+
 def test_urgent_post_denied_without_permission():
     s = new_session(allowed_nodes=["!someone_else"])
     s.advance("b")            # bbs menu
