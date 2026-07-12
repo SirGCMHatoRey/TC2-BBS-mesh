@@ -20,12 +20,12 @@ import sys
 # under test. Keeps `python tests/test_x.py` working alongside pytest.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import utils
 import message_processing
 from settings import Config, Menus
 from database import Database
 from js8_db import Js8Database
 from runtime import Runtime
+from session import Session as RealSession
 from fakes import FakeTransport, make_node
 
 MENUS = Menus(main=["Q", "B", "U", "X"],
@@ -75,17 +75,17 @@ SENDER_ID = "!sender"
 
 
 def new_session(allowed_nodes=(), bbs_nodes=(), extra_nodes=None):
-    """Fresh conversation: cleared state, in-memory stores, config as a value.
+    """Fresh conversation: a fresh Session, in-memory stores, config as a value.
 
-    Everything is constructed and passed as a Runtime, not patched over a
-    module global.
+    Every test builds its own Runtime — including its own Session, which owns
+    the conversation state — so nothing leaks between tests through a module
+    global.
     """
-    utils.user_states.clear()
-
     database = Database(":memory:")
     database.initialize_schema()
     runtime = Runtime(config=_config(bbs_nodes=bbs_nodes, allowed_nodes=allowed_nodes),
-                      database=database, js8_database=Js8Database(None))
+                      database=database, js8_database=Js8Database(None),
+                      session=RealSession())
 
     nodes = {SENDER_ID: make_node(SENDER_NUM, "SEND", "Sender Node")}
     if extra_nodes:

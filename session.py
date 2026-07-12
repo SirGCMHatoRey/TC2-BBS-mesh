@@ -1,19 +1,18 @@
-"""Session — the deep dispatcher for BBS conversations.
+"""Session — where every Node stands in its conversation, and how it advances.
 
-Owns the map from a conversation topic to the flow that runs it, and drives one
-step of that flow. Its interface is small:
+The Session owns the per-node state (the topic, step, and half-entered content
+that CONTEXT.md calls a Session) and the map from a topic to the flow that runs
+it. Its interface is one method:
 
-    session.handles(command)                  -> bool
-    session.quick(message, deps)              -> FlowResult | None
-    session.advance(command, message, state, deps) -> FlowResult
-    session.show(menu_name, deps)             -> FlowResult   (a menu)
-    session.enter(topic, deps)                -> FlowResult   (a flow's opening)
+    session.advance(node, message, deps) -> [(destination, text), ...]
 
-The router hands off to it and does the sending; every dispatch decision for a
-migrated topic lives behind this seam. Topics not yet registered fall through
-to the legacy path.
+The router feeds a message in and sends the outbound messages out; it never
+learns what a step is. Because the state lives on the object rather than in a
+module global, two Sessions are independent and a test constructs one instead
+of clearing a global (see docs/adr/0004).
 """
 
+from flows.base import GOTO_MAIN
 from flows.bulletin import BulletinFlow
 from flows.channel import ChannelFlow
 from flows.js8 import Js8Flow
@@ -35,6 +34,8 @@ def _default_flows():
 class Session:
     def __init__(self, flows=None):
         flows = flows if flows is not None else _default_flows()
+        self._states = {}                 # node -> its current conversation state
+
         self._flows = {}
         for flow in flows:
             for topic in _topics(flow):
@@ -48,25 +49,66 @@ class Session:
         # Longest prefix wins, so "chp,," is never shadowed by a shorter one.
         self._quick_prefixes = sorted(self._quick, key=len, reverse=True)
 
-    def handles(self, command):
-        return command in self._flows
+    def advance(self, node, message, deps):
+        """Advance `node`'s conversation by one message.
 
-    def quick(self, message, deps):
-        """Run a quick command if this message is one, else return None."""
-        lowered = message.lower().strip()
+        Returns the outbound messages the router should send, as
+        (destination, text) pairs — the node's replies plus any notification to
+        another node. Updates this node's stored state as a side effect.
+        """
+        result = self._route(node, message, deps)
+        return self._enact(node, result, deps)
+
+    # --- routing ----------------------------------------------------------
+
+    def _route(self, node, message, deps):
+        message = message.strip()
+        lowered = message.lower()
+        # Tolerate a repeated final character on single-letter commands (e.g. "rx").
+        if len(lowered) == 2 and lowered[1] == 'x':
+            lowered = lowered[0]
+
+        # Quick commands act from anywhere, without moving the conversation.
+        result = self._quick_command(message, deps)
+        if result is not None:
+            return result
+
+        # EXIT from anywhere returns to the main menu, before any flow sees it.
+        if lowered == 'x':
+            return self._navigation.show(GOTO_MAIN, deps)
+
+        # No stored state means the node is sitting at the main menu.
+        state = self._states.get(node)
+        topic = state['command'] if state else 'MAIN_MENU'
+        if topic not in self._flows:
+            return self._navigation.show(GOTO_MAIN, deps)
+        return self._flows[topic].advance(
+            message, state or {'command': 'MAIN_MENU', 'step': 1}, deps)
+
+    def _quick_command(self, message, deps):
+        lowered = message.lower()
         for prefix in self._quick_prefixes:
             if lowered.startswith(prefix):
                 flow, method = self._quick[prefix]
-                return getattr(flow, method)(message.strip(), deps)
+                return getattr(flow, method)(message, deps)
         return None
 
-    def advance(self, command, message, state, deps):
-        return self._flows[command].advance(message, state, deps)
+    # --- enacting a FlowResult -------------------------------------------
 
-    def show(self, menu_name, deps):
-        """Render a menu. Navigation owns every menu the BBS has."""
-        return self._navigation.show(menu_name, deps)
+    def _enact(self, node, result, deps):
+        outbound = [(node, reply) for reply in result.replies]
+        outbound += list(result.notifications)
 
-    def enter(self, topic, deps):
-        """Ask the flow that owns `topic` for its greeting and starting state."""
-        return self._flows[topic].entry(deps)
+        # A flow returns at most one hand-off: `goto` a menu, or `enter` a flow.
+        if result.goto is not None:
+            handed_off = self._navigation.show(result.goto, deps)
+        elif result.enter is not None:
+            handed_off = self._flows[result.enter].entry(deps)
+        else:
+            if not result.keep_state:
+                self._states[node] = result.next_state
+            return outbound
+
+        outbound += [(node, reply) for reply in handed_off.replies]
+        self._states[node] = handed_off.next_state
+        return outbound

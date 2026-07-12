@@ -12,28 +12,32 @@ path.
 We are recording this as a decision because the codebase does not yet obey it.
 Three modules still keep their state in module-level globals:
 
-| Module | The global | Substituted in tests by |
+| Module | The global | Now |
 | --- | --- | --- |
-| `utils` | `user_states = {}` | `utils.user_states.clear()` |
+| ~~`utils`~~ | ~~`user_states = {}`~~ | done — the `Session` object owns it |
 | ~~`db_operations`~~ | ~~`thread_local.connection`~~ | done — now a `Database` object |
 | ~~`settings`~~ | ~~seven cached values behind `configure()`/`reset()`~~ | done — now a `Config` value |
 
-**Progress.** Two of the three are gone.
+**Done.** All three are gone.
 
 The database global went first: `db_operations` became a `Database` object,
 constructed in `server.main()` and handed to `on_receive` through the closure
 `pubsub` already gave us, and to `db_admin.main(db)` on its own.
 
 The settings cache went next. `settings.load()` reads the config file once and
-returns a frozen `Config`; there is no `configure()`, no `reset()`, no cache. A
-`Runtime` value bundles the `Config` with the two stores built from it, and the
-router receives one `Runtime` rather than reaching for a module. Tests build a
-`Config` literal and a `Runtime` — no line of the suite reassigns a settings
-value or the connection any more.
+returns a frozen `Config`; there is no `configure()`, no `reset()`, no cache.
 
-What remains is the conversation state: `user_states` in `utils`, which the
-Session should own. Until it does, `run_tests.py` still isolates by process,
-but that dict is the only reason left.
+The conversation state went last. `Session` now owns the per-node state and the
+whole routing loop — `session.advance(node, message, deps)` returns what to
+send. The `Session` is constructed once in `server.main()` and carried on the
+`Runtime`, so the router reaches for no module; `utils.py`, which had shrunk to
+that one dict, is deleted. Tests build a `Session` (inside a `Runtime`) rather
+than clearing a global.
+
+**Consequence realised.** With no module-level mutable state left on the
+conversation path, the suite no longer needs process isolation. `run_tests.py`
+runs every file in one interpreter; the whole suite passing there is the proof
+that nothing leaks between files.
 
 The counter-example is already in the repo. `Js8Database` owns its path and its
 connection and is constructed with `":memory:"` in tests. Nothing is reassigned,

@@ -23,6 +23,7 @@ from js8call_integration import JS8CallClient
 from message_processing import on_receive
 from pubsub import pub
 from runtime import Runtime
+from session import Session
 from transport import MeshtasticTransport
 
 # General logging
@@ -71,7 +72,8 @@ def main():
     transport = MeshtasticTransport(interface)
     database = Database()
     js8_database = Js8Database(config.js8.db_path)
-    runtime = Runtime(config=config, database=database, js8_database=js8_database)
+    runtime = Runtime(config=config, database=database,
+                      js8_database=js8_database, session=Session())
 
     logging.info(f"TC²-BBS is running on {system_config['interface_type']} interface...")
 

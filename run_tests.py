@@ -1,25 +1,30 @@
 #!/usr/bin/env python3
-"""Run the whole suite. No test framework required.
+"""Run the whole suite in one interpreter. No test framework required.
 
-Each file runs in its own process. That is not incidental: the tests replace
-the one remaining piece of module-level state — the conversation states in
-utils — and a shared interpreter would let one file's substitute leak into the
-next. See docs/adr/0004: the database connection and the settings cache are
-already passed rather than global; once the conversation state is too, this
-isolation stops being necessary.
+Every module the tests touch is passed its state, not reaching for a module
+global — the conversation state now lives on a Session the tests construct, the
+database and config likewise (see docs/adr/0004). So the files can share one
+interpreter: nothing one file sets up leaks into the next. Each test file also
+still runs standalone (`python tests/test_x.py`) via its own __main__ block.
 
     python run_tests.py              # everything
     python run_tests.py mail board   # only files whose name contains these
 """
 
+import contextlib
+import importlib
+import io
 import pathlib
-import subprocess
 import sys
 
-TESTS = pathlib.Path(__file__).parent / "tests"
+ROOT = pathlib.Path(__file__).parent
+TESTS = ROOT / "tests"
 
 
 def main(patterns):
+    sys.path.insert(0, str(ROOT))
+    sys.path.insert(0, str(TESTS))
+
     files = sorted(TESTS.glob("test_*.py"))
     if patterns:
         files = [f for f in files if any(p in f.name for p in patterns)]
@@ -28,28 +33,28 @@ def main(patterns):
         return 1
 
     width = max(len(f.stem) for f in files)
-    failed = []
     total = 0
+    failed = []
 
     for path in files:
-        result = subprocess.run([sys.executable, str(path)],
-                                capture_output=True, text=True)
-        tail = result.stdout.strip().splitlines()
-        summary = tail[-1] if tail else "(no output)"
-        ok = result.returncode == 0 and "FAIL" not in result.stdout
+        module = importlib.import_module(path.stem)
+        tests = [v for k, v in sorted(vars(module).items())
+                 if k.startswith("test_") and callable(v)]
+        file_failures = []
+        for test in tests:
+            total += 1
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    test()
+            except Exception as error:            # noqa: BLE001 - report, don't stop
+                file_failures.append((test.__name__, error))
 
-        for line in tail:
-            if line.startswith("ok "):
-                total += 1
-
-        print(f"{path.stem:<{width}}  {summary}")
-        if not ok:
-            failed.append(path.stem)
-            for line in result.stdout.splitlines():
-                if line.startswith("FAIL"):
-                    print(f"    {line}")
-            if result.stderr.strip():
-                print(f"    stderr: {result.stderr.strip().splitlines()[-1]}")
+        count = len(tests)
+        ok = count - len(file_failures)
+        print(f"{path.stem:<{width}}  {ok}/{count} passed")
+        for name, error in file_failures:
+            print(f"    FAIL {name}: {type(error).__name__}: {error}")
+            failed.append(f"{path.stem}::{name}")
 
     print()
     if failed:

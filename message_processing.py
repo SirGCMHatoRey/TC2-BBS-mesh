@@ -7,17 +7,13 @@ one place that wraps the interface pubsub hands us.
 
 import logging
 
-from utils import get_user_state, update_user_state
-from session import Session
-from flows.base import Deps, GOTO_MAIN
+from flows.base import Deps
 from adapters import Store, Lookup
 from events import Origin
 from replication import Replication
 from transport import MeshtasticTransport
 import replication
 import roster
-
-_SESSION = Session()
 
 
 def _build_deps(sender_id, transport, runtime):
@@ -37,32 +33,6 @@ def _build_deps(sender_id, transport, runtime):
     )
 
 
-def _enact(sender_id, result, deps, transport):
-    """Send what a flow produced and store where the conversation now stands.
-
-    A flow returns replies plus at most one hand-off: `goto` asks for a menu,
-    `enter` hands the conversation to another flow. Both are resolved through
-    the Session, so menus and openings each have exactly one owner.
-    """
-    for reply in result.replies:
-        transport.send(reply, sender_id)
-    for destination, text in result.notifications:
-        transport.send(text, destination)
-
-    if result.goto is not None:
-        handed_off = _SESSION.show(result.goto, deps)
-    elif result.enter is not None:
-        handed_off = _SESSION.enter(result.enter, deps)
-    else:
-        if not result.keep_state:
-            update_user_state(sender_id, result.next_state)
-        return
-
-    for reply in handed_off.replies:
-        transport.send(reply, sender_id)
-    update_user_state(sender_id, handed_off.next_state)
-
-
 def process_message(sender_id, message, transport, runtime, is_sync_message=False):
     if is_sync_message:
         # A record from a peer: store it, then let Replication decide whether
@@ -76,35 +46,10 @@ def process_message(sender_id, message, transport, runtime, is_sync_message=Fals
         Replication(transport, peers).publish(event, Origin.SYNCED)
         return
 
-    state = get_user_state(sender_id)
-    message_strip = message.strip()
-    message_lower = message_strip.lower()
-
-    # Handle repeated characters for single character commands using a prefix
-    if len(message_lower) == 2 and message_lower[1] == 'x':
-        message_lower = message_lower[0]
-
+    # A conversation: the Session advances it and says what to send.
     deps = _build_deps(sender_id, transport, runtime)
-
-    # Quick commands act from anywhere, without moving the conversation.
-    result = _SESSION.quick(message_strip, deps)
-    if result is not None:
-        _enact(sender_id, result, deps, transport)
-        return
-
-    # EXIT from anywhere returns to the main menu, before any flow sees it.
-    if message_lower == 'x':
-        _enact(sender_id, _SESSION.show(GOTO_MAIN, deps), deps, transport)
-        return
-
-    # No state means the conversation is sitting at the main menu.
-    topic = state['command'] if state else 'MAIN_MENU'
-    if not _SESSION.handles(topic):
-        _enact(sender_id, _SESSION.show(GOTO_MAIN, deps), deps, transport)
-        return
-
-    result = _SESSION.advance(topic, message, state or {'command': 'MAIN_MENU', 'step': 1}, deps)
-    _enact(sender_id, result, deps, transport)
+    for destination, text in runtime.session.advance(sender_id, message, deps):
+        transport.send(text, destination)
 
 
 def on_receive(packet, interface, runtime):
