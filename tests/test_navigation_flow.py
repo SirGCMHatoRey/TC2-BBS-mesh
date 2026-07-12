@@ -7,7 +7,7 @@ import sys
 # under test. Keeps `python tests/test_x.py` working alongside pytest.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flows.base import Deps
+from flows.base import Deps, Stay, Enter
 from flows.navigation import (
     BBS_TITLE, NavigationFlow, QUICK_HELP, UTILITIES_TITLE, build_menu,
 )
@@ -47,21 +47,21 @@ def test_build_menu_labels_b_by_menu():
 def test_main_menu_shows_unread_count():
     r = NavigationFlow().show("main", deps(FakeStore(mail=[1, 2, 3])))
     assert "✉️:3" in r.replies[0]
-    assert r.next_state == MAIN
+    assert r.outcome == Stay(MAIN)
 
 
 def test_unknown_menu_name_falls_back_to_main():
     # The handler this replaces raised NameError here.
     r = NavigationFlow().show("nonsense", deps())
     assert "TC² BBS" in r.replies[0]
-    assert r.next_state == MAIN
+    assert r.outcome == Stay(MAIN)
 
 
 def test_show_bbs_and_utilities():
     assert BBS_TITLE in NavigationFlow().show("bbs", deps()).replies[0]
-    assert NavigationFlow().show("bbs", deps()).next_state == BBS
+    assert NavigationFlow().show("bbs", deps()).outcome == Stay(BBS)
     assert UTILITIES_TITLE in NavigationFlow().show("utilities", deps()).replies[0]
-    assert NavigationFlow().show("utilities", deps()).next_state == UTIL
+    assert NavigationFlow().show("utilities", deps()).outcome == Stay(UTIL)
 
 
 # --- main menu -------------------------------------------------------------
@@ -69,17 +69,17 @@ def test_show_bbs_and_utilities():
 def test_main_quick_help_stays_put():
     r = NavigationFlow().advance("q", MAIN, deps())
     assert r.replies == [QUICK_HELP]
-    assert r.next_state == MAIN
+    assert r.outcome == Stay(MAIN)
 
 
 def test_main_b_opens_bbs_menu():
     r = NavigationFlow().advance("b", MAIN, deps())
-    assert r.next_state == BBS
+    assert r.outcome == Stay(BBS)
 
 
 def test_main_unknown_reshows_main():
     r = NavigationFlow().advance("zzz", MAIN, deps())
-    assert r.next_state == MAIN
+    assert r.outcome == Stay(MAIN)
 
 
 def test_no_state_is_treated_as_main_menu():
@@ -91,27 +91,27 @@ def test_no_state_is_treated_as_main_menu():
 
 def test_bbs_selections_enter_flows():
     nav = NavigationFlow()
-    assert nav.advance("m", BBS, deps()).enter == "MAIL"
-    assert nav.advance("b", BBS, deps()).enter == "BULLETIN_MENU"
-    assert nav.advance("c", BBS, deps()).enter == "CHANNEL_DIRECTORY"
-    assert nav.advance("j", BBS, deps()).enter == "JS8CALL_MENU"
+    assert nav.advance("m", BBS, deps()).outcome == Enter("MAIL")
+    assert nav.advance("b", BBS, deps()).outcome == Enter("BULLETIN_MENU")
+    assert nav.advance("c", BBS, deps()).outcome == Enter("CHANNEL_DIRECTORY")
+    assert nav.advance("j", BBS, deps()).outcome == Enter("JS8CALL_MENU")
 
 
 def test_bbs_unknown_falls_back_to_main():
     r = NavigationFlow().advance("zzz", BBS, deps())
-    assert r.next_state == MAIN
+    assert r.outcome == Stay(MAIN)
 
 
 # --- utilities menu: enter + leaves ---------------------------------------
 
 def test_utilities_stats_enters_flow():
-    assert NavigationFlow().advance("s", UTIL, deps()).enter == "STATS"
+    assert NavigationFlow().advance("s", UTIL, deps()).outcome == Enter("STATS")
 
 
 def test_fortune_leaf_stays_in_utilities():
     r = NavigationFlow().advance("f", UTIL, deps(fortunes=["Be brief"]))
     assert r.replies == ["🔮 Be brief 🔮"]
-    assert r.next_state == UTIL
+    assert r.outcome == Stay(UTIL)
 
 
 def test_fortune_with_none_available():
@@ -127,7 +127,7 @@ def test_wall_of_shame_lists_low_batteries():
     r = NavigationFlow().advance("w", UTIL, deps(roster=roster))
     assert "Flat - Battery 5%" in r.replies[0]
     assert "Fine" not in r.replies[0]
-    assert r.next_state == UTIL
+    assert r.outcome == Stay(UTIL)
 
 
 def test_wall_of_shame_when_all_healthy():

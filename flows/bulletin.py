@@ -12,7 +12,7 @@ store's Replication, not this flow's.
 """
 
 import board as boards
-from flows.base import FlowResult, GOTO_MAIN, GOTO_BBS, UNKNOWN_NODE_REPLY
+from flows.base import stay, end, keep, goto, GOTO_MAIN, GOTO_BBS, UNKNOWN_NODE_REPLY
 
 BULLETIN_MENU = ("📰Bulletin Menu📰\nWhich board would you like to enter?\n"
                  "[G]eneral  [I]nfo  [N]ews  [U]rgent")
@@ -54,8 +54,7 @@ class BulletinFlow:
     QUICK_COMMANDS = {"pb,,": "quick_post", "cb,,": "quick_check"}
 
     def entry(self, deps):
-        return FlowResult(replies=[BULLETIN_MENU],
-                          next_state={"command": "BULLETIN_MENU", "step": 1})
+        return stay({"command": "BULLETIN_MENU", "step": 1}, replies=[BULLETIN_MENU])
 
     # --- quick commands ---------------------------------------------------
 
@@ -63,47 +62,44 @@ class BulletinFlow:
         """PB,,{board},,{subject},,{content} — post without stepping."""
         parts = message.split(",,", 3)
         if len(parts) != 4:
-            return FlowResult(replies=[POST_USAGE], keep_state=True)
+            return keep(replies=[POST_USAGE])
 
         _, board_name, subject, content = parts
         board = boards.Board.from_name(board_name)
         if board is None:
-            return FlowResult(replies=[_unknown_board(board_name)], keep_state=True)
+            return keep(replies=[_unknown_board(board_name)])
         if not _may_post(board, deps):
-            return FlowResult(replies=[NO_PERMISSION], keep_state=True)
+            return keep(replies=[NO_PERMISSION])
 
         sender_short_name = deps.lookup.short_name(deps.node_id)
         if sender_short_name is None:
-            return FlowResult(replies=[UNKNOWN_NODE_REPLY], keep_state=True)
+            return keep(replies=[UNKNOWN_NODE_REPLY])
 
         deps.store.add_bulletin(board.name, sender_short_name, subject, content)
-        return FlowResult(
-            replies=[f"Your bulletin '{subject}' has been posted to {board.name}."],
-            keep_state=True)
+        return keep(
+            replies=[f"Your bulletin '{subject}' has been posted to {board.name}."])
 
     def quick_check(self, message, deps):
         """CB,,{board} — list a board and wait for a number."""
         parts = message.split(",,", 1)
         if len(parts) != 2 or not parts[1].strip():
-            return FlowResult(replies=[CHECK_USAGE], keep_state=True)
+            return keep(replies=[CHECK_USAGE])
 
         board = boards.Board.from_name(parts[1])
         if board is None:
-            return FlowResult(replies=[_unknown_board(parts[1].strip())], keep_state=True)
+            return keep(replies=[_unknown_board(parts[1].strip())])
 
         bulletins = deps.store.get_bulletins(board.name)
         if not bulletins:
-            return FlowResult(replies=[f"No bulletins available on {board.name} board."],
-                              keep_state=True)
+            return keep(replies=[f"No bulletins available on {board.name} board."])
 
         listing = f"📰 Bulletins on {board.name} board:\n"
         for i, bulletin in enumerate(bulletins):
             listing += (f"[{i + 1:02d}] Subject: {bulletin[1]}, "
                         f"From: {bulletin[2]}, Date: {bulletin[3]}\n")
         listing += "\nPlease reply with the number of the bulletin you want to read."
-        return FlowResult(replies=[listing],
-                          next_state={"command": "CHECK_BULLETIN", "step": 1,
-                                      "board_name": board.name, "bulletins": bulletins})
+        return stay({"command": "CHECK_BULLETIN", "step": 1,
+                     "board_name": board.name, "bulletins": bulletins}, replies=[listing])
 
     def advance(self, message, state, deps):
         command = state.get("command")
@@ -119,7 +115,7 @@ class BulletinFlow:
             return self._take_content(message, state, deps)
         if command == "CHECK_BULLETIN":
             return self._read_numbered(message, state, deps)
-        return FlowResult(next_state=state)
+        return stay(state)
 
     def _read_numbered(self, message, state, deps):
         """The numbered read the CB,, quick command seeds."""
@@ -127,28 +123,24 @@ class BulletinFlow:
         try:
             index = int(message) - 1
         except ValueError:
-            return FlowResult(replies=["Invalid input. Please enter a valid bulletin number."],
-                              next_state=state)
+            return stay(state, replies=["Invalid input. Please enter a valid bulletin number."])
         if index < 0 or index >= len(bulletins):
-            return FlowResult(replies=["Invalid bulletin number. Please try again."],
-                              next_state=state)
+            return stay(state, replies=["Invalid bulletin number. Please try again."])
 
         sender, date, subject, content, _ = \
             deps.store.get_bulletin_content(bulletins[index][0])
-        return FlowResult(
-            replies=[f"Date: {date}\nFrom: {sender}\nSubject: {subject}\n\n{content}"],
-            next_state=None)
+        return end(
+            replies=[f"Date: {date}\nFrom: {sender}\nSubject: {subject}\n\n{content}"])
 
     def _select_board(self, message, deps):
         board = _LETTER_TO_BOARD.get(message.lower().strip())
         if board is None:
             # Legacy dropped unrecognized menu input back to the main menu.
-            return FlowResult(goto=GOTO_MAIN)
+            return goto(GOTO_MAIN)
         bulletins = deps.store.get_bulletins(board.name)
         reply = f"{board.name} has {len(bulletins)} messages.\n[R]ead  [P]ost"
-        return FlowResult(
-            replies=[reply],
-            next_state={"command": "BULLETIN_ACTION", "step": 2, "board": board.name})
+        return stay({"command": "BULLETIN_ACTION", "step": 2, "board": board.name},
+                    replies=[reply])
 
     def _read_or_post(self, message, state, deps):
         board_name = state["board"]
@@ -157,24 +149,21 @@ class BulletinFlow:
         if choice == "r":
             bulletins = deps.store.get_bulletins(board_name)
             if not bulletins:
-                return FlowResult(replies=[f"No bulletins in {board_name}."],
-                                  goto=GOTO_BBS)
+                return goto(GOTO_BBS, replies=[f"No bulletins in {board_name}."])
             replies = [f"Select a bulletin number to view from {board_name}:"]
             replies += [f"[{b[0]}] {b[1]}" for b in bulletins]
-            return FlowResult(
-                replies=replies,
-                next_state={"command": "BULLETIN_READ", "step": 3, "board": board_name})
+            return stay({"command": "BULLETIN_READ", "step": 3, "board": board_name},
+                        replies=replies)
 
         if choice == "p":
             board = boards.Board.from_name(board_name)
             if board is not None and not _may_post(board, deps):
-                return FlowResult(replies=[NO_PERMISSION], goto=GOTO_BBS)
-            return FlowResult(
-                replies=["What is the subject of your bulletin? Keep it short."],
-                next_state={"command": "BULLETIN_POST", "step": 4, "board": board_name})
+                return goto(GOTO_BBS, replies=[NO_PERMISSION])
+            return stay({"command": "BULLETIN_POST", "step": 4, "board": board_name},
+                        replies=["What is the subject of your bulletin? Keep it short."])
 
         # Anything else fell through to the main menu in the legacy path.
-        return FlowResult(goto=GOTO_MAIN)
+        return goto(GOTO_MAIN)
 
     def _read_bulletin(self, message, state, deps):
         bulletin_id = int(message)
@@ -182,27 +171,25 @@ class BulletinFlow:
             deps.store.get_bulletin_content(bulletin_id)
         reply = (f"From: {sender_short_name}\nDate: {date}\nSubject: {subject}\n"
                  f"- - - - - - -\n{content}")
-        return FlowResult(replies=[reply], goto=GOTO_BBS)
+        return goto(GOTO_BBS, replies=[reply])
 
     def _take_subject(self, message, state):
-        return FlowResult(
-            replies=["Send the contents of your bulletin. Send a message with END when finished."],
-            next_state={"command": "BULLETIN_POST_CONTENT", "step": 5,
-                        "board": state["board"], "subject": message, "content": ""})
+        return stay({"command": "BULLETIN_POST_CONTENT", "step": 5,
+                     "board": state["board"], "subject": message, "content": ""},
+                    replies=["Send the contents of your bulletin. Send a message with END when finished."])
 
     def _take_content(self, message, state, deps):
         if message.lower() != "end":
-            return FlowResult(next_state={**state,
-                                          "content": state["content"] + message + "\n"})
+            return stay({**state, "content": state["content"] + message + "\n"})
 
         board = state["board"]
         subject = state["subject"]
         content = state["content"]
         sender_short_name = deps.lookup.short_name(deps.node_id)
         if sender_short_name is None:
-            return FlowResult(replies=[UNKNOWN_NODE_REPLY], next_state=None)
+            return end(replies=[UNKNOWN_NODE_REPLY])
 
         deps.store.add_bulletin(board, sender_short_name, subject, content)
         reply = (f"Your bulletin '{subject}' has been posted to {board}.\n"
                  f"(╯°□°)╯📄📌[{board}]")
-        return FlowResult(replies=[reply], goto=GOTO_BBS)
+        return goto(GOTO_BBS, replies=[reply])

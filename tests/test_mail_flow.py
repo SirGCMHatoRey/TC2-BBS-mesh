@@ -12,7 +12,7 @@ import sys
 # under test. Keeps `python tests/test_x.py` working alongside pytest.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flows.base import Deps, UNKNOWN_NODE_REPLY
+from flows.base import Deps, UNKNOWN_NODE_REPLY, Stay, End, Keep
 from flows.mail import MailFlow, MAIL_MENU
 from roster import Node
 
@@ -72,7 +72,7 @@ def st(command, step, **extra):
 def test_read_empty_inbox_ends():
     r = MailFlow().advance("r", st("MAIL", 1), deps())
     assert r.replies == ["There are no messages in your mailbox.📭"]
-    assert r.next_state is None
+    assert r.outcome == End()
 
 
 def test_read_lists_messages_and_advances():
@@ -80,13 +80,13 @@ def test_read_lists_messages_and_advances():
     r = MailFlow().advance("r", st("MAIL", 1), deps(store))
     assert "You have 1 mail messages" in r.replies[0]
     assert "-5-" in r.replies[1] and "From: AA" in r.replies[1]
-    assert r.next_state == {"command": "MAIL", "step": 2}
+    assert r.outcome == Stay({"command": "MAIL", "step": 2})
 
 
 def test_send_prompts_for_short_name():
     r = MailFlow().advance("s", st("MAIL", 1), deps())
     assert "Short Name" in r.replies[0]
-    assert r.next_state["step"] == 3
+    assert r.outcome.state["step"] == 3
 
 
 # --- open a message --------------------------------------------------------
@@ -96,14 +96,14 @@ def test_open_message_shows_content_and_options():
     r = MailFlow().advance("5", st("MAIL", 2), deps(store))
     assert "From: AA" in r.replies[0]
     assert "[K]eep  [D]elete  [R]eply" in r.replies[1]
-    assert r.next_state["step"] == 4
-    assert r.next_state["unique_id"] == "u5"
+    assert r.outcome.state["step"] == 4
+    assert r.outcome.state["unique_id"] == "u5"
 
 
 def test_open_missing_message_reports_not_found():
     r = MailFlow().advance("9", st("MAIL", 2), deps(FakeStore(content={})))
     assert r.replies == ["Mail not found"]
-    assert r.next_state is None
+    assert r.outcome == End()
 
 
 # --- recipient resolution --------------------------------------------------
@@ -112,7 +112,7 @@ def test_recipient_unknown_returns_to_mail_menu():
     r = MailFlow().advance("zzz", st("MAIL", 3), deps())
     assert r.replies[0] == "I'm unable to find that node in my database."
     assert r.replies[1] == MAIL_MENU
-    assert r.next_state == {"command": "MAIL", "step": 1}
+    assert r.outcome == Stay({"command": "MAIL", "step": 1})
 
 
 def test_recipient_single_prompts_subject():
@@ -120,7 +120,7 @@ def test_recipient_single_prompts_subject():
                         names={"!bob": "Bob Node"})
     r = MailFlow().advance("Bob", st("MAIL", 3), deps(lookup=lookup))
     assert "message to Bob Node" in r.replies[0]
-    assert r.next_state == {"command": "MAIL", "step": 5, "recipient_id": "!bob"}
+    assert r.outcome == Stay({"command": "MAIL", "step": 5, "recipient_id": "!bob"})
 
 
 def test_recipient_multiple_lists_choices():
@@ -129,7 +129,7 @@ def test_recipient_multiple_lists_choices():
     r = MailFlow().advance("bob", st("MAIL", 3), deps(lookup=lookup))
     assert "multiple nodes" in r.replies[0]
     assert "[0] Bob One" in r.replies
-    assert r.next_state["step"] == 6
+    assert r.outcome.state["step"] == 6
 
 
 # --- disposition -----------------------------------------------------------
@@ -140,22 +140,22 @@ def test_delete_message():
     r = MailFlow().advance("d", state, deps(store))
     assert store.deleted == [("u5", "!me")]
     assert "deleted" in r.replies[0]
-    assert r.next_state is None
+    assert r.outcome == End()
 
 
 def test_reply_sets_up_compose():
     state = st("MAIL", 4, unique_id="u5", mail_id=5, sender="AA", subject="Hi", content="x")
     r = MailFlow().advance("r", state, deps())
     assert "reply to AA" in r.replies[0]
-    assert r.next_state["reply_to_mail_id"] == 5
-    assert r.next_state["subject"] == "Re: Hi"
+    assert r.outcome.state["reply_to_mail_id"] == 5
+    assert r.outcome.state["subject"] == "Re: Hi"
 
 
 def test_keep_message():
     state = st("MAIL", 4, unique_id="u5", mail_id=5, sender="AA", subject="Hi", content="x")
     r = MailFlow().advance("k", state, deps())
     assert "kept in your inbox" in r.replies[0]
-    assert r.next_state is None
+    assert r.outcome == End()
 
 
 # --- compose + send --------------------------------------------------------
@@ -164,7 +164,7 @@ def test_compose_accumulates_content():
     state = st("MAIL", 7, recipient_id="!bob", subject="Hi", content="")
     r = MailFlow().advance("first line", state, deps())
     assert r.replies == []
-    assert r.next_state["content"] == "first line\n"
+    assert r.outcome.state["content"] == "first line\n"
 
 
 def test_compose_end_sends_mail_and_notifies():
@@ -176,7 +176,7 @@ def test_compose_end_sends_mail_and_notifies():
     assert "mailbox of Bob Node" in r.replies[0]
     assert r.notifications == [("!bob", "You have a new mail message from ME. "
                                 "Check your mailbox by responding to this message with CM.")]
-    assert r.next_state == {"command": "MAIL", "step": 8}
+    assert r.outcome == Stay({"command": "MAIL", "step": 8})
 
 
 def test_compose_end_reply_resolves_original_sender():
@@ -191,13 +191,13 @@ def test_compose_end_reply_resolves_original_sender():
 def test_again_yes_reopens_menu():
     r = MailFlow().advance("y", st("MAIL", 8), deps())
     assert r.replies == [MAIL_MENU]
-    assert r.next_state == {"command": "MAIL", "step": 1}
+    assert r.outcome == Stay({"command": "MAIL", "step": 1})
 
 
 def test_again_no_ends():
     r = MailFlow().advance("n", st("MAIL", 8), deps())
     assert "feel free" in r.replies[0]
-    assert r.next_state is None
+    assert r.outcome == End()
 
 
 # --- CHECK_MAIL ------------------------------------------------------------
@@ -207,22 +207,22 @@ def test_check_read_valid_number():
     state = st("CHECK_MAIL", 1, mail=[(5, "AA", "Hello", "d", "u5")])
     r = MailFlow().advance("1", state, deps(store))
     assert "From: AA" in r.replies[0]
-    assert r.next_state["step"] == 2
-    assert r.next_state["mail_id"] == 5
+    assert r.outcome.state["step"] == 2
+    assert r.outcome.state["mail_id"] == 5
 
 
 def test_check_read_out_of_range():
     state = st("CHECK_MAIL", 1, mail=[(5, "AA", "Hello", "d", "u5")])
     r = MailFlow().advance("9", state, deps())
     assert "Invalid message number" in r.replies[0]
-    assert r.next_state == state
+    assert r.outcome == Stay(state)
 
 
 def test_check_read_non_numeric():
     state = st("CHECK_MAIL", 1, mail=[(5, "AA", "Hello", "d", "u5")])
     r = MailFlow().advance("abc", state, deps())
     assert "Invalid input" in r.replies[0]
-    assert r.next_state == state
+    assert r.outcome == Stay(state)
 
 
 def test_check_confirm_delete():
@@ -230,15 +230,15 @@ def test_check_confirm_delete():
     state = st("CHECK_MAIL", 2, unique_id="u5", mail_id=5, sender="AA", subject="Hi", content="x")
     r = MailFlow().advance("d", state, deps(store))
     assert store.deleted == [("u5", "!me")]
-    assert r.next_state is None
+    assert r.outcome == End()
 
 
 def test_check_confirm_reply_switches_to_mail_compose():
     state = st("CHECK_MAIL", 2, unique_id="u5", mail_id=5, sender="AA", subject="Hi", content="x")
     r = MailFlow().advance("r", state, deps())
-    assert r.next_state["command"] == "MAIL"
-    assert r.next_state["step"] == 7
-    assert r.next_state["reply_to_mail_id"] == 5
+    assert r.outcome.state["command"] == "MAIL"
+    assert r.outcome.state["step"] == 7
+    assert r.outcome.state["reply_to_mail_id"] == 5
 
 
 # --- SM,, quick send -------------------------------------------------------
@@ -246,13 +246,13 @@ def test_check_confirm_reply_switches_to_mail_compose():
 def test_quick_send_usage_on_bad_format():
     r = MailFlow().quick_send("sm,,foo", deps())
     assert "Send Mail Quick Command format" in r.replies[0]
-    assert r.keep_state
+    assert isinstance(r.outcome, Keep)
 
 
 def test_quick_send_unknown_node():
     r = MailFlow().quick_send("sm,,zzz,,Subj,,Body", deps())
     assert r.replies == ["Node with short name 'zzz' not found."]
-    assert r.keep_state
+    assert isinstance(r.outcome, Keep)
 
 
 def test_quick_send_ambiguous_short_name():
@@ -270,7 +270,7 @@ def test_quick_send_delivers_and_notifies():
     assert store.added == [("!me", "ME", "!bob", "Subj", "Body text")]
     assert r.replies == ["Mail has been sent to Bob Node."]
     assert r.notifications[0][0] == "!bob"
-    assert r.keep_state
+    assert isinstance(r.outcome, Keep)
 
 
 def test_quick_send_keeps_content_with_commas():
@@ -286,7 +286,7 @@ def test_quick_send_keeps_content_with_commas():
 def test_quick_check_empty_mailbox():
     r = MailFlow().quick_check("cm", deps())
     assert r.replies == ["You have no new messages."]
-    assert r.keep_state
+    assert isinstance(r.outcome, Keep)
 
 
 def test_quick_check_lists_and_awaits_a_number():
@@ -294,8 +294,8 @@ def test_quick_check_lists_and_awaits_a_number():
     r = MailFlow().quick_check("cm", deps(store))
     assert "📬 You have the following messages:" in r.replies[0]
     assert "01. From: AA, Subject: Hello" in r.replies[0]
-    assert r.next_state == {"command": "CHECK_MAIL", "step": 1,
-                            "mail": [(5, "AA", "Hello", "2026-07-08", "u5")]}
+    assert r.outcome == Stay({"command": "CHECK_MAIL", "step": 1,
+                            "mail": [(5, "AA", "Hello", "2026-07-08", "u5")]})
 
 
 def test_quick_send_refuses_an_unidentified_sender():
@@ -317,7 +317,7 @@ def test_compose_refuses_an_unidentified_sender():
     r = MailFlow().advance("END", state, deps(store, lookup))
     assert r.replies == [UNKNOWN_NODE_REPLY]
     assert store.added == []
-    assert r.next_state is None
+    assert r.outcome == End()
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ that the pure Flow shape works.
 
 import time
 
-from flows.base import FlowResult, GOTO_MAIN
+from flows.base import stay, goto, GOTO_MAIN
 
 _MENU = ("📊Stats Menu📊\nWhat stats would you like to view?\n"
          "[N]odes  [H]ardware  [R]oles  E[X]IT")
@@ -25,7 +25,7 @@ class StatsFlow:
 
     def entry(self, deps):
         """Greeting and starting state when Navigation hands the topic over."""
-        return FlowResult(replies=[_MENU], next_state={"command": self.TOPIC, "step": 1})
+        return stay({"command": self.TOPIC, "step": 1}, replies=[_MENU])
 
     def advance(self, message, state, deps):
         message = message.lower().strip()
@@ -34,10 +34,10 @@ class StatsFlow:
 
         step = state.get("step", 1)
         if step != 1:
-            return FlowResult(next_state=state)
+            return stay(state)
 
         if message == "x":
-            return FlowResult(goto=GOTO_MAIN)
+            return goto(GOTO_MAIN)
 
         if message == "n":
             stat = self._node_summary(deps.roster)
@@ -47,10 +47,9 @@ class StatsFlow:
             stat = self._role_summary(deps.roster)
         else:
             # Legacy showed nothing for unrecognized input and stayed put.
-            return FlowResult(next_state={"command": self.TOPIC, "step": 1})
+            return stay({"command": self.TOPIC, "step": 1})
 
-        return FlowResult(replies=[stat, _MENU],
-                          next_state={"command": self.TOPIC, "step": 1})
+        return stay({"command": self.TOPIC, "step": 1}, replies=[stat, _MENU])
 
     def _node_summary(self, roster):
         now = int(time.time())

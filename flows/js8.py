@@ -5,7 +5,7 @@ database. Pure — no sqlite connections opened here, and an unconfigured
 bridge simply reads as empty rather than raising at the user.
 """
 
-from flows.base import FlowResult, GOTO_MAIN
+from flows.base import stay, goto, GOTO_MAIN
 
 JS8_MENU = ("JS8Call Menu:\n[G]roup Messages\n[S]tation Messages\n"
             "[U]rgent Messages\nE[X]IT")
@@ -15,8 +15,7 @@ class Js8Flow:
     TOPICS = ["JS8CALL_MENU", "GROUP_MESSAGES"]
 
     def entry(self, deps):
-        return FlowResult(replies=[JS8_MENU],
-                          next_state={"command": "JS8CALL_MENU", "step": 1})
+        return stay({"command": "JS8CALL_MENU", "step": 1}, replies=[JS8_MENU])
 
     def advance(self, message, state, deps):
         if state.get("command") == "GROUP_MESSAGES":
@@ -27,7 +26,7 @@ class Js8Flow:
             choice = choice[0]
 
         if choice == "x":
-            return FlowResult(goto=GOTO_MAIN)
+            return goto(GOTO_MAIN)
         if choice == "g":
             return self._group_menu(deps)
         if choice == "s":
@@ -40,8 +39,7 @@ class Js8Flow:
 
     def _at_menu(self, replies):
         """Say something, then sit back at the JS8Call menu."""
-        return FlowResult(replies=replies + [JS8_MENU],
-                          next_state={"command": "JS8CALL_MENU", "step": 1})
+        return stay({"command": "JS8CALL_MENU", "step": 1}, replies=replies + [JS8_MENU])
 
     def _group_listing(self, groups):
         return "Group Messages Menu:\n" + "\n".join(
@@ -51,9 +49,8 @@ class Js8Flow:
         groups = deps.js8.group_names()
         if not groups:
             return self._at_menu(["No group messages available."])
-        return FlowResult(replies=[self._group_listing(groups)],
-                          next_state={"command": "GROUP_MESSAGES", "step": 1,
-                                      "groups": groups})
+        return stay({"command": "GROUP_MESSAGES", "step": 1, "groups": groups},
+                    replies=[self._group_listing(groups)])
 
     def _station_messages(self, deps):
         messages = deps.js8.station_messages()

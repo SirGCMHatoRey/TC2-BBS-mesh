@@ -12,7 +12,7 @@ import sys
 # under test. Keeps `python tests/test_x.py` working alongside pytest.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flows.base import Deps, UNKNOWN_NODE_REPLY
+from flows.base import Deps, UNKNOWN_NODE_REPLY, Stay, End, Keep, Goto
 from flows.bulletin import BulletinFlow
 
 
@@ -61,12 +61,12 @@ def test_select_board_reports_count_and_advances():
     store = FakeStore(bulletins={"General": [(1, "Hi", "AA", "d", "u")]})
     r = BulletinFlow().advance("g", st("BULLETIN_MENU"), deps(store))
     assert "General has 1 messages" in r.replies[0]
-    assert r.next_state == {"command": "BULLETIN_ACTION", "step": 2, "board": "General"}
+    assert r.outcome == Stay({"command": "BULLETIN_ACTION", "step": 2, "board": "General"})
 
 
 def test_unknown_board_letter_goes_to_main():
     r = BulletinFlow().advance("z", st("BULLETIN_MENU"), deps())
-    assert r.goto == "main"
+    assert r.outcome == Goto("main")
 
 
 # --- read ------------------------------------------------------------------
@@ -74,7 +74,7 @@ def test_unknown_board_letter_goes_to_main():
 def test_read_empty_board_returns_to_bbs():
     r = BulletinFlow().advance("r", st("BULLETIN_ACTION", board="News"), deps())
     assert r.replies == ["No bulletins in News."]
-    assert r.goto == "bbs"
+    assert r.outcome == Goto("bbs")
 
 
 def test_read_lists_bulletins():
@@ -84,7 +84,7 @@ def test_read_lists_bulletins():
     assert r.replies[0] == "Select a bulletin number to view from Info:"
     assert "[7] Subject A" in r.replies
     assert "[9] Subject B" in r.replies
-    assert r.next_state["command"] == "BULLETIN_READ"
+    assert r.outcome.state["command"] == "BULLETIN_READ"
 
 
 def test_read_bulletin_shows_content():
@@ -93,7 +93,7 @@ def test_read_bulletin_shows_content():
     assert "From: AA" in r.replies[0]
     assert "Subject: Subject A" in r.replies[0]
     assert "Body" in r.replies[0]
-    assert r.goto == "bbs"
+    assert r.outcome == Goto("bbs")
 
 
 # --- post + urgent permission ---------------------------------------------
@@ -101,28 +101,28 @@ def test_read_bulletin_shows_content():
 def test_post_to_general_prompts_for_subject():
     r = BulletinFlow().advance("p", st("BULLETIN_ACTION", board="General"), deps())
     assert "subject" in r.replies[0].lower()
-    assert r.next_state["command"] == "BULLETIN_POST"
+    assert r.outcome.state["command"] == "BULLETIN_POST"
 
 
 def test_urgent_post_denied_when_not_allowed():
     d = deps(node_id="!me", allowed=["!someone_else"])
     r = BulletinFlow().advance("p", st("BULLETIN_ACTION", board="Urgent"), d)
     assert "don't have permission" in r.replies[0]
-    assert r.goto == "bbs"
+    assert r.outcome == Goto("bbs")
 
 
 def test_urgent_post_allowed_when_listed():
     d = deps(node_id="!me", allowed=["!me"])
     r = BulletinFlow().advance("p", st("BULLETIN_ACTION", board="Urgent"), d)
     assert "subject" in r.replies[0].lower()
-    assert r.next_state["command"] == "BULLETIN_POST"
+    assert r.outcome.state["command"] == "BULLETIN_POST"
 
 
 def test_empty_allow_list_permits_urgent_post():
     # Matches legacy: no allow-list configured => anyone may post.
     d = deps(node_id="!me", allowed=[])
     r = BulletinFlow().advance("p", st("BULLETIN_ACTION", board="Urgent"), d)
-    assert r.next_state["command"] == "BULLETIN_POST"
+    assert r.outcome.state["command"] == "BULLETIN_POST"
 
 
 # --- content accumulation + commit ----------------------------------------
@@ -131,7 +131,7 @@ def test_content_accumulates_until_end():
     state = st("BULLETIN_POST_CONTENT", board="General", subject="Hi", content="")
     r = BulletinFlow().advance("line one", state, deps())
     assert r.replies == []
-    assert r.next_state["content"] == "line one\n"
+    assert r.outcome.state["content"] == "line one\n"
 
 
 def test_end_persists_and_returns_to_bbs():
@@ -140,7 +140,7 @@ def test_end_persists_and_returns_to_bbs():
     r = BulletinFlow().advance("END", state, deps(store))
     assert store.added == [("General", "ME", "Hi", "body\n")]
     assert "posted to General" in r.replies[0]
-    assert r.goto == "bbs"
+    assert r.outcome == Goto("bbs")
 
 
 def test_end_without_node_info_errors():
@@ -149,7 +149,7 @@ def test_end_without_node_info_errors():
     d = deps(store, node_id="!gone", roster={})   # acting node not in roster
     r = BulletinFlow().advance("END", state, d)
     assert "Unable to retrieve your node information" in r.replies[0]
-    assert r.next_state is None
+    assert r.outcome == End()
     assert store.added == []
 
 
@@ -160,7 +160,7 @@ def test_quick_post_refuses_an_unidentified_poster():
     r = BulletinFlow().quick_post("pb,,General,,Subj,,Body", d)
     assert r.replies == [UNKNOWN_NODE_REPLY]
     assert store.added == []
-    assert r.keep_state
+    assert isinstance(r.outcome, Keep)
 
 
 def test_both_post_paths_refuse_a_node_without_a_short_name():
@@ -182,13 +182,13 @@ def test_both_post_paths_refuse_a_node_without_a_short_name():
 def test_quick_post_usage_on_bad_format():
     r = BulletinFlow().quick_post("pb,,only,,two", deps())
     assert "Post Bulletin Quick Command format" in r.replies[0]
-    assert r.keep_state
+    assert isinstance(r.outcome, Keep)
 
 
 def test_quick_post_rejects_unknown_board():
     r = BulletinFlow().quick_post("pb,,Sports,,Subj,,Body", deps())
     assert r.replies == ["Unknown board 'Sports'. Try General, Info, News, or Urgent."]
-    assert r.keep_state
+    assert isinstance(r.outcome, Keep)
 
 
 def test_quick_post_to_general_succeeds():
@@ -197,7 +197,7 @@ def test_quick_post_to_general_succeeds():
     # The canonical board name is used, not whatever case was typed.
     assert store.added == [("General", "ME", "Subj", "Body")]
     assert "posted to General" in r.replies[0]
-    assert r.keep_state
+    assert isinstance(r.outcome, Keep)
 
 
 def test_quick_post_to_urgent_respects_the_allow_list():
@@ -237,7 +237,7 @@ def test_quick_check_rejects_unknown_board():
 def test_quick_check_empty_board():
     r = BulletinFlow().quick_check("cb,,news", deps())
     assert r.replies == ["No bulletins available on News board."]
-    assert r.keep_state
+    assert isinstance(r.outcome, Keep)
 
 
 def test_quick_check_lists_and_awaits_a_number():
@@ -245,7 +245,7 @@ def test_quick_check_lists_and_awaits_a_number():
     r = BulletinFlow().quick_check("cb,,info", deps(store))
     assert "📰 Bulletins on Info board:" in r.replies[0]
     assert "[01] Subject: Subj" in r.replies[0]
-    assert r.next_state["command"] == "CHECK_BULLETIN"
+    assert r.outcome.state["command"] == "CHECK_BULLETIN"
 
 
 # --- CHECK_BULLETIN numbered read -----------------------------------------
@@ -256,14 +256,14 @@ def test_check_bulletin_read_valid():
     r = BulletinFlow().advance("1", state, deps(store))
     assert "From: AA" in r.replies[0]
     assert "Body" in r.replies[0]
-    assert r.next_state is None
+    assert r.outcome == End()
 
 
 def test_check_bulletin_read_out_of_range():
     state = st("CHECK_BULLETIN", step=1, bulletins=[(7, "Subj", "AA", "d", "u")])
     r = BulletinFlow().advance("9", state, deps())
     assert "Invalid bulletin number" in r.replies[0]
-    assert r.next_state == state
+    assert r.outcome == Stay(state)
 
 
 def test_check_bulletin_read_non_numeric():

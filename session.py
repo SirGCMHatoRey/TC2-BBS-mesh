@@ -12,7 +12,7 @@ module global, two Sessions are independent and a test constructs one instead
 of clearing a global (see docs/adr/0004).
 """
 
-from flows.base import GOTO_MAIN
+from flows.base import GOTO_MAIN, Stay, End, Keep, Goto, Enter
 from flows.bulletin import BulletinFlow
 from flows.channel import ChannelFlow
 from flows.js8 import Js8Flow
@@ -102,17 +102,25 @@ class Session:
     def _enact(self, node, result, deps):
         outbound = [(node, reply) for reply in result.replies]
         outbound += list(result.notifications)
+        return outbound + self._apply(node, result.outcome, deps)
 
-        # A flow returns at most one hand-off: `goto` a menu, or `enter` a flow.
-        if result.goto is not None:
-            handed_off = self._navigation.show(result.goto, deps)
-        elif result.enter is not None:
-            handed_off = self._flows[result.enter].entry(deps)
+    def _apply(self, node, outcome, deps):
+        """Enact one outcome: update this node's state, and for a hand-off,
+        return the menu-or-opening's replies. Nothing else may be set — the
+        outcome is a single value, so the old flag combinations can't occur."""
+        if isinstance(outcome, Keep):
+            return []
+        if isinstance(outcome, End):
+            self._states[node] = None
+            return []
+        if isinstance(outcome, Stay):
+            self._states[node] = outcome.state
+            return []
+        if isinstance(outcome, Goto):
+            handed_off = self._navigation.show(outcome.menu, deps)
+        elif isinstance(outcome, Enter):
+            handed_off = self._flows[outcome.topic].entry(deps)
         else:
-            if not result.keep_state:
-                self._states[node] = result.next_state
-            return outbound
-
-        outbound += [(node, reply) for reply in handed_off.replies]
-        self._states[node] = handed_off.next_state
-        return outbound
+            raise TypeError(f"unknown flow outcome: {outcome!r}")
+        replies = [(node, reply) for reply in handed_off.replies]
+        return replies + self._apply(node, handed_off.outcome, deps)

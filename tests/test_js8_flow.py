@@ -7,7 +7,7 @@ import sys
 # under test. Keeps `python tests/test_x.py` working alongside pytest.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flows.base import Deps
+from flows.base import Deps, Stay, Goto
 from flows.js8 import JS8_MENU, Js8Flow
 
 
@@ -47,17 +47,17 @@ def group_state(groups):
 def test_entry_shows_menu():
     r = Js8Flow().entry(deps())
     assert r.replies == [JS8_MENU]
-    assert r.next_state == MENU
+    assert r.outcome == Stay(MENU)
 
 
 def test_invalid_option_reshows_menu():
     r = Js8Flow().advance("z", MENU, deps())
     assert r.replies == ["Invalid option. Please choose again.", JS8_MENU]
-    assert r.next_state == MENU
+    assert r.outcome == Stay(MENU)
 
 
 def test_exit_goes_to_main():
-    assert Js8Flow().advance("x", MENU, deps()).goto == "main"
+    assert Js8Flow().advance("x", MENU, deps()).outcome == Goto("main")
 
 
 # --- reads when the bridge is empty or unconfigured ------------------------
@@ -65,7 +65,7 @@ def test_exit_goes_to_main():
 def test_no_group_messages():
     r = Js8Flow().advance("g", MENU, deps())
     assert r.replies == ["No group messages available.", JS8_MENU]
-    assert r.next_state == MENU
+    assert r.outcome == Stay(MENU)
 
 
 def test_no_station_messages():
@@ -85,7 +85,7 @@ def test_group_menu_lists_groups():
     r = Js8Flow().advance("g", MENU, deps(js8))
     assert "[0] @NET" in r.replies[0]
     assert "[1] @EMCOMM" in r.replies[0]
-    assert r.next_state == group_state([("@NET",), ("@EMCOMM",)])
+    assert r.outcome == Stay(group_state([("@NET",), ("@EMCOMM",)]))
 
 
 def test_station_messages_listed():
@@ -109,7 +109,7 @@ def test_select_group_shows_its_messages():
     r = Js8Flow().advance("0", group_state([("@NET",)]), deps(js8))
     assert "Messages for group @NET:" in r.replies[0]
     assert "[1] A: hello (2026-07-08)" in r.replies[0]
-    assert r.next_state == MENU
+    assert r.outcome == Stay(MENU)
 
 
 def test_select_group_with_no_messages():
@@ -124,7 +124,7 @@ def test_select_group_out_of_range_relists():
     assert r.replies[0] == "Invalid group selection. Please choose again."
     assert "[0] @NET" in r.replies[1]
     assert r.replies[-1] == JS8_MENU
-    assert r.next_state == MENU
+    assert r.outcome == Stay(MENU)
 
 
 def test_select_group_non_numeric_relists():

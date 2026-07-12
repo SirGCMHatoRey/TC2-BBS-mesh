@@ -13,7 +13,7 @@ in exactly one place, which is why every other Flow can simply say
 
 import random
 
-from flows.base import FlowResult, GOTO_BBS, GOTO_MAIN, GOTO_UTILITIES
+from flows.base import stay, enter, GOTO_BBS, GOTO_MAIN, GOTO_UTILITIES
 
 MAIN_TITLE = "💾TC² BBS💾"
 BBS_TITLE = "📰BBS Menu📰"
@@ -63,16 +63,16 @@ class NavigationFlow:
         replaces raised NameError instead.
         """
         if name == GOTO_BBS:
-            return FlowResult(replies=[build_menu(deps.menus.bbs, BBS_TITLE)],
-                              next_state={"command": "MENU", "menu": "bbs", "step": 1})
+            return stay({"command": "MENU", "menu": "bbs", "step": 1},
+                        replies=[build_menu(deps.menus.bbs, BBS_TITLE)])
         if name == GOTO_UTILITIES:
-            return FlowResult(replies=[build_menu(deps.menus.utilities, UTILITIES_TITLE)],
-                              next_state={"command": "MENU", "menu": "utilities", "step": 1})
+            return stay({"command": "MENU", "menu": "utilities", "step": 1},
+                        replies=[build_menu(deps.menus.utilities, UTILITIES_TITLE)])
 
         unread = len(deps.store.get_mail(deps.node_id))
         title = f"{MAIN_TITLE} (✉️:{unread})"
-        return FlowResult(replies=[build_menu(deps.menus.main, title)],
-                          next_state={"command": "MAIN_MENU", "step": 1})
+        return stay({"command": "MAIN_MENU", "step": 1},
+                    replies=[build_menu(deps.menus.main, title)])
 
     def entry(self, deps):
         return self.show(GOTO_MAIN, deps)
@@ -97,7 +97,7 @@ class NavigationFlow:
 
     def _main(self, choice, state, deps):
         if choice == "q":
-            return FlowResult(replies=[QUICK_HELP], next_state=state)
+            return stay(state, replies=[QUICK_HELP])
         if choice == "b":
             return self.show(GOTO_BBS, deps)
         if choice == "u":
@@ -106,22 +106,22 @@ class NavigationFlow:
 
     def _bbs(self, choice, deps):
         if choice == "m":
-            return FlowResult(enter="MAIL")
+            return enter("MAIL")
         if choice == "b":
-            return FlowResult(enter="BULLETIN_MENU")
+            return enter("BULLETIN_MENU")
         if choice == "c":
-            return FlowResult(enter="CHANNEL_DIRECTORY")
+            return enter("CHANNEL_DIRECTORY")
         if choice == "j":
-            return FlowResult(enter="JS8CALL_MENU")
+            return enter("JS8CALL_MENU")
         return self.show(GOTO_MAIN, deps)
 
     def _utilities(self, choice, state, deps):
         if choice == "s":
-            return FlowResult(enter="STATS")
+            return enter("STATS")
         if choice == "f":
-            return FlowResult(replies=[self._fortune(deps.fortunes)], next_state=state)
+            return stay(state, replies=[self._fortune(deps.fortunes)])
         if choice == "w":
-            return FlowResult(replies=[self._wall_of_shame(deps.roster)], next_state=state)
+            return stay(state, replies=[self._wall_of_shame(deps.roster)])
         return self.show(GOTO_MAIN, deps)
 
     # --- leaves -----------------------------------------------------------

@@ -11,7 +11,7 @@ import sys
 # under test. Keeps `python tests/test_x.py` working alongside pytest.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flows.base import Deps, FlowResult
+from flows.base import Deps, Stay, Goto
 from flows.stats import StatsFlow
 
 
@@ -38,7 +38,7 @@ def test_node_summary_counts_all_time():
     assert "Total nodes seen:" in r.replies[0]
     assert "All time: 2" in r.replies[0]
     assert r.replies[1].startswith("📊Stats Menu📊")
-    assert r.next_state == STEP1
+    assert r.outcome == Stay(STEP1)
 
 
 def test_hardware_summary_groups_models():
@@ -60,21 +60,21 @@ def test_role_summary_groups_roles():
 
 def test_exit_requests_main_menu():
     r = StatsFlow().advance("x", STEP1, Deps())
-    assert r.goto == "main"
+    assert r.outcome == Goto("main")
     assert r.replies == []
 
 
 def test_repeated_x_suffix_collapses_to_exit():
     r = StatsFlow().advance("nx", STEP1, Deps())
     # "nx" collapses to "n", not exit.
-    assert r.goto is None
+    assert not isinstance(r.outcome, Goto)
 
 
 def test_unknown_input_stays_silent():
     r = StatsFlow().advance("z", STEP1, Deps(roster=roster(("TBEAM", "CLIENT", None))))
     assert r.replies == []
-    assert r.next_state == STEP1
-    assert r.goto is None
+    assert r.outcome == Stay(STEP1)
+    assert not isinstance(r.outcome, Goto)
 
 
 if __name__ == "__main__":
