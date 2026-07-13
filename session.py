@@ -122,5 +122,8 @@ class Session:
             handed_off = self._flows[outcome.topic].entry(deps)
         else:
             raise TypeError(f"unknown flow outcome: {outcome!r}")
+        # A menu or a flow's opening settles the conversation — its outcome is a
+        # terminal Stay. Applying it stores that state; it is not another
+        # hand-off, so this does not chain menu-to-menu.
         replies = [(node, reply) for reply in handed_off.replies]
         return replies + self._apply(node, handed_off.outcome, deps)

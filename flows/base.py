@@ -7,14 +7,14 @@ messages, touches the radio, or reaches for a global. The router at the seam
 does the sending; the collaborators a flow needs are handed in via ``Deps``.
 
 A flow's answer is a :class:`FlowResult`: what to say (``replies`` and
-``notifications``) and one :class:`Outcome` saying where the conversation goes
+``notifications``) and one :data:`Outcome` saying where the conversation goes
 next. The outcome is a single value, not a set of flags, so a flow cannot ask
 to enter a flow *and* show a menu at once — there is nowhere to write both.
 Build one with the ``stay`` / ``end`` / ``keep`` / ``goto`` / ``enter`` helpers.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, List, Union
 
 
 @dataclass
@@ -81,6 +81,10 @@ class Enter:
     topic: str
 
 
+#: A flow's answer to "where next" is exactly one of these.
+Outcome = Union[Stay, End, Keep, Goto, Enter]
+
+
 @dataclass
 class FlowResult:
     """What a flow hands back to the router.
@@ -88,12 +92,12 @@ class FlowResult:
     replies: text chunks to send to the current node, in order.
     notifications: out-of-band (destination, text) messages to other nodes —
         e.g. the "you have new mail" nudge to a recipient.
-    outcome: exactly one Outcome — where the conversation goes next.
+    outcome: exactly one :data:`Outcome` — where the conversation goes next.
     """
 
     replies: List[str] = field(default_factory=list)
     notifications: List[tuple] = field(default_factory=list)
-    outcome: Any = field(default_factory=End)
+    outcome: Outcome = field(default_factory=End)
 
 
 def _lists(replies, notifications):
