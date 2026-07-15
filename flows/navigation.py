@@ -20,7 +20,9 @@ BBS_TITLE = "📰BBS Menu📰"
 UTILITIES_TITLE = "🛠️Utilities Menu🛠️"
 
 QUICK_HELP = ("✈️QUICK COMMANDS✈️\nSend command below for usage info:\nSM,, - Send "
-              "Mail\nCM - Check Mail\nPB,, - Post Bulletin\nCB,, - Check Bulletins\n")
+              "Mail\nCM - Check Mail\nPB,, - Post Bulletin\nCB,, - Check Bulletins\n"
+              "CHP,, - Post Channel\nCHL - List Channels\n"
+              "(',,' must be typed exactly - no spaces)\n")
 
 _WALL_OF_SHAME_HEADER = "Devices with battery levels below 20%:\n"
 
