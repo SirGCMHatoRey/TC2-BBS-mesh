@@ -18,7 +18,7 @@ import roster
 MAX_PAYLOAD = 200
 
 #: Wait between chunks so a long reply does not swamp the mesh.
-PACING_SECONDS = 2
+PACING_SECONDS = 4
 
 
 def chunks(text, size=MAX_PAYLOAD):
