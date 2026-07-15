@@ -307,7 +307,9 @@ The `,,` is a literal, required separator, not decoration — `SM,,bob,,Hi,,See
 you at 6` sends mail, but `SM` alone with no arguments (or `SM bob Hi ...`
 without commas) is not a valid command. `CM` and `CHL` take no arguments, so
 those two are sent bare. Send any quick command's letters alone with no `,,`
-(e.g. `PB`, `CB`, or `SM`) to get back its exact format as a reminder.
+(e.g. `PB`, `CB`, or `SM`) to get back its exact format as a reminder — a
+mistyped separator (e.g. a stray space, `PB, , General,,...`) gets the same
+reminder rather than being silently ignored.
 
 ### For contributors
 

@@ -15,6 +15,7 @@ global, two Sessions are independent and a test constructs one instead of
 clearing a global (see docs/adr/0004).
 """
 
+import re
 import time
 
 from flows.base import GOTO_MAIN, Stay, End, Keep, Goto, Enter
@@ -71,6 +72,14 @@ class Session:
                 self._quick[prefix] = (flow, method)
         # Longest prefix wins, so "chp,," is never shadowed by a shorter one.
         self._quick_prefixes = sorted(self._quick, key=len, reverse=True)
+        # The bare command word, args stripped, for prefixes that take args
+        # ("pb,," -> "pb") — precomputed once, alongside _quick_prefixes above.
+        self._quick_bare = {p: p[:-2] for p in self._quick_prefixes if p.endswith(",,")}
+        # A typo'd separator still reads as an attempt at the command: the bare
+        # word immediately followed by a comma (e.g. "PB, , General,,..." has a
+        # stray space breaking the "pb,," prefix, but is still clearly a PB).
+        self._quick_typo = {p: re.compile(rf"^{re.escape(bare)}\s*,")
+                            for p, bare in self._quick_bare.items()}
 
     def advance(self, node, message, deps, now=None):
         """Advance `node`'s conversation by one message.
@@ -151,17 +160,26 @@ class Session:
             message, state or {'command': 'MAIN_MENU', 'step': 1}, deps)
 
     def _quick_command(self, message, deps):
-        # A prefix ending in ",," takes arguments after it (e.g. "pb,,General,,...");
-        # the bare command word alone (e.g. "PB") still routes here so the flow's
+        # A prefix ending in ",," takes arguments after it (e.g. "pb,,General,,...").
+        # The bare command word alone (e.g. "PB") still routes here so the flow's
         # own usage message is shown, rather than falling through to menu routing
-        # as if the letters meant nothing.
+        # as if the letters meant nothing. So does a typo'd separator (e.g. a
+        # stray space in "PB, , General,,..."): anything starting with the bare
+        # word immediately followed by a comma reads as an attempted quick
+        # command, even if the rest doesn't parse.
         lowered = message.lower()
         for prefix in self._quick_prefixes:
-            bare = prefix[:-2] if prefix.endswith(",,") else prefix
+            bare = self._quick_bare.get(prefix, prefix)
             if lowered.startswith(prefix) or lowered == bare:
-                flow, method = self._quick[prefix]
-                return getattr(flow, method)(message, deps)
+                return self._dispatch(prefix, message, deps)
+        for prefix, typo in self._quick_typo.items():
+            if typo.match(lowered):
+                return self._dispatch(prefix, message, deps)
         return None
+
+    def _dispatch(self, prefix, message, deps):
+        flow, method = self._quick[prefix]
+        return getattr(flow, method)(message, deps)
 
     # --- enacting a FlowResult -------------------------------------------
 

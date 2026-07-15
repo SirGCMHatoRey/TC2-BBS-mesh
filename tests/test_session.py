@@ -113,6 +113,21 @@ def test_no_arg_quick_commands_are_unaffected_by_the_bare_word_fallback():
     assert any("No channels available" in t for t in texts(out))
 
 
+def test_typoed_comma_separator_shows_usage_instead_of_the_main_menu():
+    """PB, , General,,Subj,,Body — a space snuck between the two commas, so
+    the message doesn't start with the literal "pb,," prefix. It should still
+    be recognized as an attempted PB and show usage, not silently reset."""
+    out = Session().advance(1, "PB, , General,,Quick Command,,Body", deps())
+    assert any("Post Bulletin Quick Command format" in t for t in texts(out))
+
+
+def test_ordinary_text_starting_with_a_command_letter_is_not_mistaken_for_one():
+    """"Small dog" starts with "sm" but has no comma right after it — must not
+    be treated as a malformed SM,, attempt."""
+    out = Session().advance(1, "Small dog", deps())
+    assert any("TC² BBS" in t for t in texts(out))
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0
