@@ -151,9 +151,14 @@ class Session:
             message, state or {'command': 'MAIN_MENU', 'step': 1}, deps)
 
     def _quick_command(self, message, deps):
+        # A prefix ending in ",," takes arguments after it (e.g. "pb,,General,,...");
+        # the bare command word alone (e.g. "PB") still routes here so the flow's
+        # own usage message is shown, rather than falling through to menu routing
+        # as if the letters meant nothing.
         lowered = message.lower()
         for prefix in self._quick_prefixes:
-            if lowered.startswith(prefix):
+            bare = prefix[:-2] if prefix.endswith(",,") else prefix
+            if lowered.startswith(prefix) or lowered == bare:
                 flow, method = self._quick[prefix]
                 return getattr(flow, method)(message, deps)
         return None

@@ -303,6 +303,12 @@ broadcasts a notice to the whole mesh, so it is restricted to the nodes listed
 under `[allow_list]` in `config.ini` — whether you post through the menu or
 through `PB,,`. If that section is absent, anyone may post there.
 
+The `,,` is a literal, required separator, not decoration — `SM,,bob,,Hi,,See
+you at 6` sends mail, but `SM` alone with no arguments (or `SM bob Hi ...`
+without commas) is not a valid command. `CM` and `CHL` take no arguments, so
+those two are sent bare. Send any quick command's letters alone with no `,,`
+(e.g. `PB`, `CB`, or `SM`) to get back its exact format as a reminder.
+
 ### For contributors
 
 Each conversation topic is a **Flow** — a pure module that, given a message and

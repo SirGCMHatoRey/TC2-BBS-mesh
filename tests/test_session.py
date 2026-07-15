@@ -23,6 +23,12 @@ class FakeStore:
     def get_mail(self, node_id):
         return []
 
+    def get_bulletins(self, board):
+        return []
+
+    def get_channels(self):
+        return []
+
 
 def deps():
     return Deps(store=FakeStore(), menus=MENUS, fortunes=[], node_id="!me", roster={})
@@ -74,6 +80,37 @@ def test_different_nodes_have_separate_state_in_one_session():
     s.advance(1, "b", deps())          # node 1 into the bbs menu
     out = s.advance(2, "m", deps())    # node 2 is still at the main menu
     assert any("TC² BBS" in t for t in texts(out))
+
+
+def test_bare_quick_command_shows_its_usage_instead_of_the_main_menu():
+    """PB (no ,,args) used to miss the "pb,," prefix match entirely and fall
+    through to ordinary menu routing, silently resetting to the main menu."""
+    out = Session().advance(1, "PB", deps())
+    assert any("Post Bulletin Quick Command format" in t for t in texts(out))
+
+    out = Session().advance(1, "CB", deps())
+    assert any("Check Bulletins Quick Command format" in t for t in texts(out))
+
+    out = Session().advance(1, "SM", deps())
+    assert any("Send Mail Quick Command format" in t for t in texts(out))
+
+    out = Session().advance(1, "CHP", deps())
+    assert any("Post Channel Quick Command format" in t for t in texts(out))
+
+
+def test_full_quick_command_with_args_still_works():
+    """The bare-word fallback must not shadow the existing ',,args' form."""
+    out = Session().advance(1, "CB,,General", deps())
+    assert any("No bulletins available on General board" in t for t in texts(out))
+
+
+def test_no_arg_quick_commands_are_unaffected_by_the_bare_word_fallback():
+    """CM and CHL already matched bare, with no ',,' key at all."""
+    out = Session().advance(1, "CM", deps())
+    assert any("no new messages" in t.lower() for t in texts(out))
+
+    out = Session().advance(1, "CHL", deps())
+    assert any("No channels available" in t for t in texts(out))
 
 
 if __name__ == "__main__":
