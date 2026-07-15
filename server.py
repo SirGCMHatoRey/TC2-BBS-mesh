@@ -20,7 +20,7 @@ from config_init import initialize_config, get_interface, init_cli_parser, merge
 from database import Database
 from js8_db import Js8Database
 from js8call_integration import JS8CallClient
-from message_processing import on_receive
+from message_processing import on_receive, check_timeouts
 from pubsub import pub
 from runtime import Runtime
 from session import Session
@@ -94,6 +94,7 @@ def main():
     try:
         while True:
             time.sleep(1)
+            check_timeouts(transport, runtime)
 
     except KeyboardInterrupt:
         logging.info("Shutting down the server...")

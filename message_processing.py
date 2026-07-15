@@ -52,6 +52,16 @@ def process_message(sender_id, message, transport, runtime, is_sync_message=Fals
         transport.send(text, destination)
 
 
+def check_timeouts(transport, runtime):
+    """The idle-loop counterpart to process_message: no inbound packet, so
+    Deps are built per node on demand instead of from one already in hand."""
+    def deps_factory(sender_id):
+        return _build_deps(sender_id, transport, runtime)
+
+    for destination, text in runtime.session.check_timeouts(deps_factory):
+        transport.send(text, destination)
+
+
 def on_receive(packet, interface, runtime):
     """The one place that meets the meshtastic interface and wraps it."""
     try:
