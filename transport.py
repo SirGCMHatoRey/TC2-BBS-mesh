@@ -12,6 +12,8 @@ not sleep.
 import logging
 import time
 
+from meshtastic import BROADCAST_NUM
+
 import roster
 
 #: Meshtastic will not carry more than this in one text payload.
@@ -62,8 +64,17 @@ class MeshtasticTransport:
         self._interface.close()
 
     def _log_sent(self, chunk, destination, packet):
-        node_id = roster.id_from_num(self.nodes, destination)
-        name = roster.short_name(self.nodes, node_id)
+        # destination arrives in whatever shape the caller already had it in:
+        # a node num for a direct reply (Session addresses by the sender's
+        # num), a node id string for a notification or a peer-sync send (both
+        # already have the id, not a num), or the broadcast sentinel for an
+        # urgent bulletin. id_from_num only resolves the first shape.
+        if destination == BROADCAST_NUM:
+            node_id, name = "broadcast", "Broadcast"
+        else:
+            node_id = destination if isinstance(destination, str) \
+                else roster.id_from_num(self.nodes, destination)
+            name = roster.short_name(self.nodes, node_id)
         shown = chunk.replace('\n', '\\n')
         logging.info(f"Sending message to user '{name}' ({node_id}) "
                      f"with sendID {packet.id}: \"{shown}\"")

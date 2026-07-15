@@ -103,6 +103,42 @@ def test_a_failed_chunk_does_not_stop_the_rest():
     assert interface.sent == []                 # both failed, neither raised
 
 
+# --- logging what was sent, for every destination shape send() accepts -----
+
+def _capture_log(fn):
+    """Run fn(), returning every message passed to logging.info."""
+    logged = []
+    original = transport.logging.info
+    transport.logging.info = lambda msg: logged.append(msg)
+    try:
+        fn()
+    finally:
+        transport.logging.info = original
+    return logged
+
+
+def test_log_resolves_a_numeric_destination_by_num():
+    """A direct reply: Session.advance addresses it by the sender's node num."""
+    interface = FakeInterface(nodes={"!bob": {"num": 5, "user": {"shortName": "BOB"}}})
+    logged = _capture_log(lambda: no_pacing(interface).send("hi", 5))
+    assert logged and "'BOB'" in logged[0] and "(!bob)" in logged[0]
+
+
+def test_log_resolves_a_string_node_id_destination_directly():
+    """A notification or a peer-sync send: both address by node id string
+    already, not a num — id_from_num can never match a string against a
+    numeric 'num' field, so this used to always log 'None' (None)."""
+    interface = FakeInterface(nodes={"!bob": {"num": 5, "user": {"shortName": "BOB"}}})
+    logged = _capture_log(lambda: no_pacing(interface).send("hi", "!bob"))
+    assert logged and "'BOB'" in logged[0] and "(!bob)" in logged[0]
+
+
+def test_log_shows_broadcast_for_the_broadcast_destination():
+    interface = FakeInterface()
+    logged = _capture_log(lambda: no_pacing(interface).send("hi", transport.BROADCAST_NUM))
+    assert logged and "Broadcast" in logged[0]
+
+
 # --- the rest of the seam --------------------------------------------------
 
 def test_nodes_are_read_live_from_the_interface():
