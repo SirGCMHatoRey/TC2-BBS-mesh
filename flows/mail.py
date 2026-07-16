@@ -65,15 +65,35 @@ class MailFlow:
 
     def quick_check(self, message, deps):
         """CM — list the mailbox and wait for a number."""
+        state, reply = self._mailbox_listing(deps)
+        if state is None:
+            return keep(replies=[reply])
+        return stay(state, replies=[reply])
+
+    def _mailbox_listing(self, deps):
+        """The CHECK_MAIL state to wait in plus the listing reply, or a
+        (None, reply) pair when there's nothing to show — shared by the CM
+        quick command and by _finish_disposition's loop-back after K/D, so
+        both read the same current mailbox instead of the stale one the node
+        was disposing of."""
         mail = deps.store.get_mail(deps.node_id)
         if not mail:
-            return keep(replies=["You have no new messages."])
+            return None, "You have no new messages."
 
         listing = "📬 You have the following messages:\n"
         for i, msg in enumerate(mail):
             listing += f"{i + 1:02d}. From: {msg[1]}, Subject: {msg[2]}\n"
         listing += "\nPlease reply with the number of the message you want to read."
-        return stay({"command": "CHECK_MAIL", "step": 1, "mail": mail}, replies=[listing])
+        return {"command": "CHECK_MAIL", "step": 1, "mail": mail}, listing
+
+    def _finish_disposition(self, confirmation, deps):
+        """After Keep or Delete: a person new to the BBS won't know to resend
+        CM to see what's left, so loop back into the listing instead of
+        dead-ending — from either the menu-driven Read or the CM path."""
+        state, reply = self._mailbox_listing(deps)
+        if state is None:
+            return end(replies=[confirmation, reply])
+        return stay(state, replies=[confirmation, reply])
 
     def advance(self, message, state, deps):
         command = state.get("command")
@@ -146,13 +166,13 @@ class MailFlow:
         choice = message.lower()
         if choice == "d":
             deps.store.delete_mail(state["unique_id"], deps.node_id)
-            return end(replies=["The message has been deleted 🗑️"])
+            return self._finish_disposition("The message has been deleted 🗑️", deps)
         if choice == "r":
             return stay(
                 {"command": "MAIL", "step": 7, "reply_to_mail_id": state["mail_id"],
                  "subject": f"Re: {state['subject']}", "content": ""},
                 replies=[f"Send your reply to {state['sender']} now, followed by a message with END"])
-        return end(replies=["The message has been kept in your inbox.✉️"])
+        return self._finish_disposition("The message has been kept in your inbox.✉️", deps)
 
     def _subject(self, message, state, deps):
         return stay(
@@ -218,10 +238,10 @@ class MailFlow:
         choice = _collapse(message).lower()
         if choice == "d":
             deps.store.delete_mail(state["unique_id"], deps.node_id)
-            return end(replies=["The message has been deleted 🗑️"])
+            return self._finish_disposition("The message has been deleted 🗑️", deps)
         if choice == "r":
             return stay(
                 {"command": "MAIL", "step": 7, "reply_to_mail_id": state["mail_id"],
                  "subject": f"Re: {state['subject']}", "content": ""},
                 replies=[f"Send your reply to {state['sender']} now, followed by a message with END"])
-        return end(replies=["The message has been kept in your inbox.✉️"])
+        return self._finish_disposition("The message has been kept in your inbox.✉️", deps)

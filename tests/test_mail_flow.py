@@ -158,6 +158,26 @@ def test_keep_message():
     assert r.outcome == End()
 
 
+def test_delete_loops_back_to_the_mailbox_when_messages_remain():
+    """A person new to the BBS won't know to resend CM after K/D — loop back
+    into the listing automatically instead of dead-ending the conversation."""
+    store = FakeStore(mail=[(6, "BB", "Second", "2026-07-16", "u6")])
+    state = st("MAIL", 4, unique_id="u5", mail_id=5, sender="AA", subject="Hi", content="x")
+    r = MailFlow().advance("d", state, deps(store))
+    assert "deleted" in r.replies[0]
+    assert "following messages" in r.replies[1]
+    assert r.outcome == Stay({"command": "CHECK_MAIL", "step": 1,
+                              "mail": [(6, "BB", "Second", "2026-07-16", "u6")]})
+
+
+def test_keep_ends_with_the_empty_mailbox_note_when_nothing_remains():
+    state = st("MAIL", 4, unique_id="u5", mail_id=5, sender="AA", subject="Hi", content="x")
+    r = MailFlow().advance("k", state, deps())
+    assert r.replies == ["The message has been kept in your inbox.✉️",
+                         "You have no new messages."]
+    assert r.outcome == End()
+
+
 # --- compose + send --------------------------------------------------------
 
 def test_compose_accumulates_content():
@@ -230,6 +250,23 @@ def test_check_confirm_delete():
     state = st("CHECK_MAIL", 2, unique_id="u5", mail_id=5, sender="AA", subject="Hi", content="x")
     r = MailFlow().advance("d", state, deps(store))
     assert store.deleted == [("u5", "!me")]
+    assert r.outcome == End()
+
+
+def test_check_confirm_delete_loops_back_when_messages_remain():
+    store = FakeStore(mail=[(6, "BB", "Second", "2026-07-16", "u6")])
+    state = st("CHECK_MAIL", 2, unique_id="u5", mail_id=5, sender="AA", subject="Hi", content="x")
+    r = MailFlow().advance("d", state, deps(store))
+    assert "deleted" in r.replies[0]
+    assert r.outcome == Stay({"command": "CHECK_MAIL", "step": 1,
+                              "mail": [(6, "BB", "Second", "2026-07-16", "u6")]})
+
+
+def test_check_confirm_keep_ends_when_mailbox_is_empty():
+    state = st("CHECK_MAIL", 2, unique_id="u5", mail_id=5, sender="AA", subject="Hi", content="x")
+    r = MailFlow().advance("k", state, deps())
+    assert r.replies == ["The message has been kept in your inbox.✉️",
+                         "You have no new messages."]
     assert r.outcome == End()
 
 
