@@ -8,6 +8,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import logging
+import threading
 import types
 
 import transport
@@ -17,13 +18,16 @@ from transport import MAX_PAYLOAD, MeshtasticTransport, chunks
 class FakeInterface:
     """Stands in for the meshtastic interface. Only Transport ever sees one."""
 
-    def __init__(self, nodes=None, my_num=7, fail_with=None):
+    def __init__(self, nodes=None, my_num=7, fail_with=None, connected=True):
         self.nodes = nodes or {}
         self.myInfo = types.SimpleNamespace(my_node_num=my_num)
         self.sent = []
         self.closed = False
         self._fail_with = fail_with
         self._packet_id = 0
+        self.isConnected = threading.Event()
+        if connected:
+            self.isConnected.set()
 
     def sendText(self, text, destinationId, wantAck=True, wantResponse=False):
         if self._fail_with is not None:
@@ -157,6 +161,43 @@ def test_close_closes_the_interface():
     interface = FakeInterface()
     no_pacing(interface).close()
     assert interface.closed
+
+
+def test_is_connected_reads_live_from_the_interface():
+    interface = FakeInterface(connected=False)
+    t = no_pacing(interface)
+    assert t.is_connected is False
+    interface.isConnected.set()
+    assert t.is_connected is True
+
+
+def test_reconnect_swaps_the_interface_in_place():
+    original = FakeInterface(my_num=1)
+    replacement = FakeInterface(my_num=2)
+    t = no_pacing(original)
+    t.reconnect(replacement)
+    assert t.my_num == 2
+    t.send("hi", 42)
+    assert replacement.sent == [(42, "hi")]
+    assert original.sent == []
+
+
+def test_reconnect_closes_the_old_interface():
+    original = FakeInterface()
+    t = no_pacing(original)
+    t.reconnect(FakeInterface())
+    assert original.closed
+
+
+def test_reconnect_swallows_a_failure_closing_the_old_interface():
+    class DeadInterface:
+        def close(self):
+            raise OSError("already gone")
+
+    t = MeshtasticTransport(DeadInterface(), pacing_seconds=0)
+    replacement = FakeInterface()
+    t.reconnect(replacement)      # must not raise
+    assert t.my_num == replacement.myInfo.my_node_num
 
 
 if __name__ == "__main__":

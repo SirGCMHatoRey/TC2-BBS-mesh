@@ -7,17 +7,23 @@ Nothing in the tests needs a fake meshtastic interface any more.
 
 
 class FakeTransport:
-    def __init__(self, nodes=None, my_num=9999):
+    def __init__(self, nodes=None, my_num=9999, is_connected=True):
         self.nodes = nodes if nodes is not None else {}
         self.my_num = my_num
         self.outbox = []          # list of (destination, text)
         self.closed = False
+        self.is_connected = is_connected
+        self.reconnected_to = []  # every interface passed to reconnect()
 
     def send(self, text, destination):
         self.outbox.append((destination, text))
 
     def close(self):
         self.closed = True
+
+    def reconnect(self, new_interface):
+        self.is_connected = True
+        self.reconnected_to.append(new_interface)
 
     # --- helpers for assertions -------------------------------------------
 

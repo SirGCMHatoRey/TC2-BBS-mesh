@@ -42,6 +42,27 @@ class MeshtasticTransport:
     def my_num(self):
         return self._interface.myInfo.my_node_num
 
+    @property
+    def is_connected(self):
+        """Live off the interface, same as nodes/my_num — reconnect.Supervisor
+        polls this to notice a dead connection the library's own
+        "connection.lost" event didn't fire for (e.g. a heartbeat-thread
+        crash bypasses it)."""
+        return self._interface.isConnected.is_set()
+
+    def reconnect(self, new_interface):
+        """Swap in a freshly rebuilt interface, closing the old one first
+        (best effort — it may already be half-dead). In place, not a new
+        Transport, so every existing holder of this object (JS8CallClient,
+        the idle loop's persistent `transport`) sees the new interface for
+        free, and the raw interface never has to leave this module (ADR-0003)
+        for reconnect.Supervisor to swap it."""
+        try:
+            self._interface.close()
+        except Exception:
+            pass
+        self._interface = new_interface
+
     def send(self, text, destination):
         for chunk in chunks(text):
             try:

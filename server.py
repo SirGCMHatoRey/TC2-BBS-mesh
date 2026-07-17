@@ -22,6 +22,7 @@ from js8_db import Js8Database
 from js8call_integration import JS8CallClient
 from message_processing import on_receive, check_timeouts
 from pubsub import pub
+from reconnect import Supervisor
 from runtime import Runtime
 from session import Session
 from transport import MeshtasticTransport
@@ -70,6 +71,8 @@ def main():
 
     interface = get_interface(system_config)
     transport = MeshtasticTransport(interface)
+    supervisor = Supervisor(transport, lambda: get_interface(system_config))
+    pub.subscribe(supervisor.on_connection_lost, "meshtastic.connection.lost")
     database = Database()
     js8_database = Js8Database(config.js8.db_path)
     runtime = Runtime(config=config, database=database,
@@ -94,6 +97,7 @@ def main():
     try:
         while True:
             time.sleep(1)
+            supervisor.check()
             check_timeouts(transport, runtime)
 
     except KeyboardInterrupt:
