@@ -69,12 +69,20 @@ def test_unknown_board_letter_goes_to_main():
     assert r.outcome == Goto("main")
 
 
+def test_junk_at_board_menu_reprompts_the_board_menu():
+    r = BulletinFlow().advance("q", st("BULLETIN_ACTION", board="General"), deps())
+    assert r.replies[0] == "Please enter R or P."
+    assert "General has 0 messages" in r.replies[1]
+    assert r.outcome == Stay({"command": "BULLETIN_ACTION", "step": 2, "board": "General"})
+
+
 # --- read ------------------------------------------------------------------
 
-def test_read_empty_board_returns_to_bbs():
+def test_read_empty_board_returns_to_board_menu():
     r = BulletinFlow().advance("r", st("BULLETIN_ACTION", board="News"), deps())
-    assert r.replies == ["No bulletins in News."]
-    assert r.outcome == Goto("bbs")
+    assert r.replies[0] == "No bulletins in News."
+    assert "News has 0 messages" in r.replies[1]
+    assert r.outcome == Stay({"command": "BULLETIN_ACTION", "step": 2, "board": "News"})
 
 
 def test_read_lists_bulletins():
@@ -87,13 +95,23 @@ def test_read_lists_bulletins():
     assert r.outcome.state["command"] == "BULLETIN_READ"
 
 
-def test_read_bulletin_shows_content():
-    store = FakeStore(content={7: ("AA", "2026-07-01", "Subject A", "Body", "u")})
+def test_read_bulletin_shows_content_then_relists_board():
+    store = FakeStore(content={7: ("AA", "2026-07-01", "Subject A", "Body", "u")},
+                       bulletins={"Info": [(7, "Subject A", "AA", "d", "u")]})
     r = BulletinFlow().advance("7", st("BULLETIN_READ", board="Info"), deps(store))
     assert "From: AA" in r.replies[0]
     assert "Subject: Subject A" in r.replies[0]
     assert "Body" in r.replies[0]
-    assert r.outcome == Goto("bbs")
+    assert r.replies[1] == "Select a bulletin number to view from Info:"
+    assert r.outcome == Stay({"command": "BULLETIN_READ", "step": 3, "board": "Info"})
+
+
+def test_read_bulletin_then_empty_board_returns_to_board_menu():
+    store = FakeStore(content={7: ("AA", "2026-07-01", "Subject A", "Body", "u")})
+    r = BulletinFlow().advance("7", st("BULLETIN_READ", board="Info"), deps(store))
+    assert "From: AA" in r.replies[0]
+    assert "Info has 0 messages" in r.replies[1]
+    assert r.outcome == Stay({"command": "BULLETIN_ACTION", "step": 2, "board": "Info"})
 
 
 # --- post + urgent permission ---------------------------------------------
@@ -108,7 +126,8 @@ def test_urgent_post_denied_when_not_allowed():
     d = deps(node_id="!me", allowed=["!someone_else"])
     r = BulletinFlow().advance("p", st("BULLETIN_ACTION", board="Urgent"), d)
     assert "don't have permission" in r.replies[0]
-    assert r.outcome == Goto("bbs")
+    assert "Urgent has 0 messages" in r.replies[1]
+    assert r.outcome == Stay({"command": "BULLETIN_ACTION", "step": 2, "board": "Urgent"})
 
 
 def test_urgent_post_allowed_when_listed():
@@ -134,13 +153,13 @@ def test_content_accumulates_until_end():
     assert r.outcome.state["content"] == "line one\n"
 
 
-def test_end_persists_and_returns_to_bbs():
+def test_end_persists_and_returns_to_bulletin_menu():
     store = FakeStore()
     state = st("BULLETIN_POST_CONTENT", board="General", subject="Hi", content="body\n")
     r = BulletinFlow().advance("END", state, deps(store))
     assert store.added == [("General", "ME", "Hi", "body\n")]
     assert "posted to General" in r.replies[0]
-    assert r.outcome == Goto("bbs")
+    assert r.outcome == Stay({"command": "BULLETIN_MENU", "step": 1})
 
 
 def test_end_without_node_info_errors():

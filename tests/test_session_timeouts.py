@@ -113,9 +113,8 @@ def test_bulletin_compose_with_content_auto_posts_like_manual_end():
     assert store.bulletins_added == [("General", "ME", "My Subject", "line one\n")]
     assert any("posted to General" in t for t in texts(out))
 
-    # Landed back at the BBS menu, same as a manual END -> Goto(bbs).
-    again = s.advance(NODE, "m", deps(store), now=T0 + COMPOSE_TIMEOUT_SECONDS + 1)
-    assert any("Mail Menu" in t for t in texts(again))
+    # Landed back at the Bulletin menu, same as a manual END.
+    assert any("Bulletin Menu" in t for t in texts(out))
 
 
 def test_bulletin_compose_with_empty_content_is_discarded_silently():

@@ -12,7 +12,7 @@ store's Replication, not this flow's.
 """
 
 import board as boards
-from flows.base import stay, end, keep, goto, GOTO_MAIN, GOTO_BBS, UNKNOWN_NODE_REPLY
+from flows.base import stay, end, keep, goto, GOTO_MAIN, UNKNOWN_NODE_REPLY
 
 BULLETIN_MENU = ("📰Bulletin Menu📰\nWhich board would you like to enter?\n"
                  "[G]eneral  [I]nfo  [N]ews  [U]rgent")
@@ -40,6 +40,25 @@ def _may_post(board, deps):
     if not board.requires_post_permission:
         return True
     return not deps.allowed_nodes or deps.node_id in deps.allowed_nodes
+
+
+def _board_menu(board_name, deps):
+    """The [R]ead/[P]ost prompt for one board, and the state that awaits it —
+    where every dead end within a board (empty list, denied post, junk
+    input) returns to, instead of bouncing out to the BBS or main menu."""
+    bulletins = deps.store.get_bulletins(board_name)
+    reply = f"{board_name} has {len(bulletins)} messages.\n[R]ead  [P]ost"
+    return {"command": "BULLETIN_ACTION", "step": 2, "board": board_name}, reply
+
+
+def _bulletin_list(board_name, deps):
+    """The numbered listing for one board, or None if it's empty."""
+    bulletins = deps.store.get_bulletins(board_name)
+    if not bulletins:
+        return None, []
+    replies = [f"Select a bulletin number to view from {board_name}:"]
+    replies += [f"[{b[0]}] {b[1]}" for b in bulletins]
+    return {"command": "BULLETIN_READ", "step": 3, "board": board_name}, replies
 
 
 class BulletinFlow:
@@ -137,41 +156,45 @@ class BulletinFlow:
         if board is None:
             # Legacy dropped unrecognized menu input back to the main menu.
             return goto(GOTO_MAIN)
-        bulletins = deps.store.get_bulletins(board.name)
-        reply = f"{board.name} has {len(bulletins)} messages.\n[R]ead  [P]ost"
-        return stay({"command": "BULLETIN_ACTION", "step": 2, "board": board.name},
-                    replies=[reply])
+        state, reply = _board_menu(board.name, deps)
+        return stay(state, replies=[reply])
 
     def _read_or_post(self, message, state, deps):
         board_name = state["board"]
         choice = message.lower().strip()
 
         if choice == "r":
-            bulletins = deps.store.get_bulletins(board_name)
-            if not bulletins:
-                return goto(GOTO_BBS, replies=[f"No bulletins in {board_name}."])
-            replies = [f"Select a bulletin number to view from {board_name}:"]
-            replies += [f"[{b[0]}] {b[1]}" for b in bulletins]
-            return stay({"command": "BULLETIN_READ", "step": 3, "board": board_name},
-                        replies=replies)
+            list_state, replies = _bulletin_list(board_name, deps)
+            if list_state is None:
+                board_state, board_reply = _board_menu(board_name, deps)
+                return stay(board_state,
+                            replies=[f"No bulletins in {board_name}.", board_reply])
+            return stay(list_state, replies=replies)
 
         if choice == "p":
             board = boards.Board.from_name(board_name)
             if board is not None and not _may_post(board, deps):
-                return goto(GOTO_BBS, replies=[NO_PERMISSION])
+                board_state, board_reply = _board_menu(board_name, deps)
+                return stay(board_state, replies=[NO_PERMISSION, board_reply])
             return stay({"command": "BULLETIN_POST", "step": 4, "board": board_name},
                         replies=["What is the subject of your bulletin? Keep it short."])
 
-        # Anything else fell through to the main menu in the legacy path.
-        return goto(GOTO_MAIN)
+        # Junk input re-prompts the same board menu instead of bouncing to main.
+        board_state, board_reply = _board_menu(board_name, deps)
+        return stay(board_state, replies=["Please enter R or P.", board_reply])
 
     def _read_bulletin(self, message, state, deps):
         bulletin_id = int(message)
+        board_name = state["board"]
         sender_short_name, date, subject, content, _ = \
             deps.store.get_bulletin_content(bulletin_id)
         reply = (f"From: {sender_short_name}\nDate: {date}\nSubject: {subject}\n"
                  f"- - - - - - -\n{content}")
-        return goto(GOTO_BBS, replies=[reply])
+        list_state, list_replies = _bulletin_list(board_name, deps)
+        if list_state is None:
+            board_state, board_reply = _board_menu(board_name, deps)
+            return stay(board_state, replies=[reply, board_reply])
+        return stay(list_state, replies=[reply] + list_replies)
 
     def _take_subject(self, message, state):
         return stay({"command": "BULLETIN_POST_CONTENT", "step": 5,
@@ -192,4 +215,4 @@ class BulletinFlow:
         deps.store.add_bulletin(board, sender_short_name, subject, content)
         reply = (f"Your bulletin '{subject}' has been posted to {board}.\n"
                  f"(╯°□°)╯📄📌[{board}]")
-        return goto(GOTO_BBS, replies=[reply])
+        return stay({"command": "BULLETIN_MENU", "step": 1}, replies=[reply, BULLETIN_MENU])
