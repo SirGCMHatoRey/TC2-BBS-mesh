@@ -56,9 +56,9 @@ def _bulletin_list(board_name, deps):
     bulletins = deps.store.get_bulletins(board_name)
     if not bulletins:
         return None, []
-    replies = [f"Select a bulletin number to view from {board_name}:"]
-    replies += [f"[{b[0]}] {b[1]}" for b in bulletins]
-    return {"command": "BULLETIN_READ", "step": 3, "board": board_name}, replies
+    lines = [f"Select a bulletin number to view from {board_name}:"]
+    lines += [f"[{b[0]}] {b[1]}" for b in bulletins]
+    return {"command": "BULLETIN_READ", "step": 3, "board": board_name}, ["\n".join(lines)]
 
 
 class BulletinFlow:

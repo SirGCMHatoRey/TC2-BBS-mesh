@@ -89,9 +89,8 @@ def test_read_lists_bulletins():
     store = FakeStore(bulletins={"Info": [(7, "Subject A", "AA", "d", "u"),
                                           (9, "Subject B", "BB", "d", "u")]})
     r = BulletinFlow().advance("r", st("BULLETIN_ACTION", board="Info"), deps(store))
-    assert r.replies[0] == "Select a bulletin number to view from Info:"
-    assert "[7] Subject A" in r.replies
-    assert "[9] Subject B" in r.replies
+    assert r.replies == ["Select a bulletin number to view from Info:\n"
+                          "[7] Subject A\n[9] Subject B"]
     assert r.outcome.state["command"] == "BULLETIN_READ"
 
 
@@ -102,7 +101,7 @@ def test_read_bulletin_shows_content_then_relists_board():
     assert "From: AA" in r.replies[0]
     assert "Subject: Subject A" in r.replies[0]
     assert "Body" in r.replies[0]
-    assert r.replies[1] == "Select a bulletin number to view from Info:"
+    assert r.replies[1] == "Select a bulletin number to view from Info:\n[7] Subject A"
     assert r.outcome == Stay({"command": "BULLETIN_READ", "step": 3, "board": "Info"})
 
 
