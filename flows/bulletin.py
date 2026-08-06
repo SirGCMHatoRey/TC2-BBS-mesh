@@ -51,14 +51,38 @@ def _board_menu(board_name, deps):
     return {"command": "BULLETIN_ACTION", "step": 2, "board": board_name}, reply
 
 
+MAX_ITEMS_PER_MESSAGE = 4
+MAX_MESSAGE_CHARS = 200
+
+
+def _pack_lines(header, items, max_items=MAX_ITEMS_PER_MESSAGE, max_chars=MAX_MESSAGE_CHARS):
+    """Pack header + items into messages of at most max_items lines each,
+    splitting early if a message would otherwise exceed max_chars."""
+    messages = []
+    current = [header]
+    count = 0
+    for item in items:
+        candidate_text = "\n".join(current + [item])
+        if count > 0 and (count >= max_items or len(candidate_text) > max_chars):
+            messages.append("\n".join(current))
+            current = [item]
+            count = 1
+        else:
+            current.append(item)
+            count += 1
+    messages.append("\n".join(current))
+    return messages
+
+
 def _bulletin_list(board_name, deps):
     """The numbered listing for one board, or None if it's empty."""
     bulletins = deps.store.get_bulletins(board_name)
     if not bulletins:
         return None, []
-    lines = [f"Select a bulletin number to view from {board_name}:"]
-    lines += [f"[{b[0]}] {b[1]}" for b in bulletins]
-    return {"command": "BULLETIN_READ", "step": 3, "board": board_name}, ["\n".join(lines)]
+    header = f"Select a bulletin number to view from {board_name}:"
+    items = [f"[{b[0]}] {b[1]}" for b in bulletins]
+    messages = _pack_lines(header, items)
+    return {"command": "BULLETIN_READ", "step": 3, "board": board_name}, messages
 
 
 class BulletinFlow:
@@ -112,13 +136,14 @@ class BulletinFlow:
         if not bulletins:
             return keep(replies=[f"No bulletins available on {board.name} board."])
 
-        listing = f"📰 Bulletins on {board.name} board:\n"
-        for i, bulletin in enumerate(bulletins):
-            listing += (f"[{i + 1:02d}] Subject: {bulletin[1]}, "
-                        f"From: {bulletin[2]}, Date: {bulletin[3]}\n")
-        listing += "\nPlease reply with the number of the bulletin you want to read."
+        header = f"📰 Bulletins on {board.name} board:"
+        items = [f"[{i + 1:02d}] Subject: {bulletin[1]}, "
+                 f"From: {bulletin[2]}, Date: {bulletin[3]}"
+                 for i, bulletin in enumerate(bulletins)]
+        items.append("Please reply with the number of the bulletin you want to read.")
+        messages = _pack_lines(header, items)
         return stay({"command": "CHECK_BULLETIN", "step": 1,
-                     "board_name": board.name, "bulletins": bulletins}, replies=[listing])
+                     "board_name": board.name, "bulletins": bulletins}, replies=messages)
 
     def advance(self, message, state, deps):
         command = state.get("command")

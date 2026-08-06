@@ -94,6 +94,24 @@ def test_read_lists_bulletins():
     assert r.outcome.state["command"] == "BULLETIN_READ"
 
 
+def test_read_lists_bulletins_caps_at_four_per_message():
+    bulletins = [(i, f"Subject {i}", "AA", "d", "u") for i in range(1, 6)]
+    store = FakeStore(bulletins={"Info": bulletins})
+    r = BulletinFlow().advance("r", st("BULLETIN_ACTION", board="Info"), deps(store))
+    assert len(r.replies) == 2
+    assert r.replies[0].count("[") == 4  # 4 bulletin lines packed with the header
+    assert r.replies[1] == "[5] Subject 5"
+
+
+def test_read_lists_bulletins_splits_on_char_limit():
+    long_title = "X" * 190
+    bulletins = [(1, "Short", "AA", "d", "u"), (2, long_title, "BB", "d", "u")]
+    store = FakeStore(bulletins={"Info": bulletins})
+    r = BulletinFlow().advance("r", st("BULLETIN_ACTION", board="Info"), deps(store))
+    assert len(r.replies) == 2
+    assert all(len(m) <= 200 for m in r.replies)
+
+
 def test_read_bulletin_shows_content_then_relists_board():
     store = FakeStore(content={7: ("AA", "2026-07-01", "Subject A", "Body", "u")},
                        bulletins={"Info": [(7, "Subject A", "AA", "d", "u")]})
@@ -264,6 +282,16 @@ def test_quick_check_lists_and_awaits_a_number():
     assert "📰 Bulletins on Info board:" in r.replies[0]
     assert "[01] Subject: Subj" in r.replies[0]
     assert r.outcome.state["command"] == "CHECK_BULLETIN"
+
+
+def test_quick_check_caps_at_four_per_message():
+    bulletins = [(i, f"Subj {i}", "AA", "2026-07-08", "u") for i in range(1, 6)]
+    store = FakeStore(bulletins={"Info": bulletins})
+    r = BulletinFlow().quick_check("cb,,info", deps(store))
+    assert len(r.replies) > 1
+    assert all(len(m) <= 200 for m in r.replies)
+    assert sum(m.count("Subject:") for m in r.replies) == 5
+    assert r.replies[-1].endswith("number of the bulletin you want to read.")
 
 
 # --- CHECK_BULLETIN numbered read -----------------------------------------
