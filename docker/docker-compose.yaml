@@ -1,7 +1,28 @@
 services:
   tc2-bbs-mesh:
-    build: .
-    restart: always
-    volumes:
-      - ./config:/home/mesh/bbs/config
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: tc2-bbs-mesh:local
+    # Kept so existing `docker logs tc2-bbs-mesh` / `docker exec` scripts work.
     container_name: tc2-bbs-mesh
+    restart: unless-stopped
+    # tini as PID 1: forwards SIGTERM to Python and reaps children.
+    init: true
+    environment:
+      TZ: ${TZ:-Etc/UTC}
+      # Host UID/GID that should own ./config (run `id` on the host).
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+    volumes:
+      # config.ini, fortunes.txt and the SQLite databases.
+      - ./config:/home/mesh/bbs/config
+    # Serial-attached node: uncomment and set the device path, then set
+    # interface_type = serial and port = /dev/ttyUSB0 in config/config.ini.
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

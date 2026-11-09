@@ -1,0 +1,23 @@
+# Only what docker/Dockerfile copies is needed; keep the context small and
+# keep local state (config, databases, venvs) out of the image.
+.git
+.gitignore
+.agents
+.claude
+.idea
+**/__pycache__
+**/*.pyc
+venv
+.venv
+tests
+docs
+examples
+docker/docker-compose.yaml
+docker/config
+config.ini
+*.db
+*.db-journal
+run_tests.py
+PR.md
+skills-lock.json
+mesh-bbs.service

@@ -10,6 +10,20 @@ If you're a Docker user, TC²-BBS Meshtastic is available on Docker Hub!
 
 [![Docker HUB](https://icon-icons.com/downloadimage.php?id=151885&root=2530/PNG/128/&file=docker_button_icon_151885.png)](https://hub.docker.com/r/thealhu/tc2-bbs-mesh)
 
+To build and run this checkout yourself:
+
+```sh
+cd docker
+docker compose up -d --build
+```
+
+On first start the container seeds `docker/config/` with `config.ini` and `fortunes.txt`. Edit `config.ini` there, then run `docker compose restart`. The SQLite databases are kept in the same folder.
+
+- `PUID` / `PGID`: the host user that owns `docker/config/`. The default is `1000`; run `id` on the host to check.
+- `TZ`: the timezone for message timestamps, for example `TZ=America/Puerto_Rico`.
+- Serial-attached node: uncomment the `devices:` block in `docker/docker-compose.yaml`. Then set `interface_type = serial` and `port` in `config.ini`.
+- Admin tool: `docker compose exec -u mesh tc2-bbs-mesh python -m db_admin`.
+
 ## Setup
 
 ### Requirements
